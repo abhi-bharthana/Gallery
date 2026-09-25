@@ -7,10 +7,22 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Frontend (Node, Vite, React)
 node_modules
 dist
 dist-ssr
 *.local
+
+# Tauri & Rust Backend (Yahan GBs ka kachra banta hai)
+/target/
+src-tauri/target/
+/gen/schemas/
+src-tauri/gen/schemas/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
