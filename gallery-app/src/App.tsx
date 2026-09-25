@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar/Sidebar';
 import Navbar from './components/Navbar';
 import Gallery from './components/Gallery';
 import ImageViewer from './components/ImageViewer';
+import FolderManager from './components/FolderManager'; // <-- Import lag gaya
 
 export default function App() {
   const [gridSize, setGridSize] = useState<'small' | 'medium' | 'large'>('medium');
@@ -34,12 +35,18 @@ export default function App() {
             transition={{ duration: 0.3, ease: 'easeOut' }}
             className="w-full h-full"
           >
-            {/* Gallery ko ab hum setSelectedImage pass karenge */}
+            {/* Main Gallery */}
             {activeTab === 'All Photos' && (
               <Gallery gridSize={gridSize} onImageClick={setSelectedImage} />
             )}
             
-            {activeTab !== 'All Photos' && (
+            {/* Folder Sync UI */}
+            {activeTab === 'Settings' && (
+              <FolderManager />
+            )}
+            
+            {/* Baki placeholders (Albums, Favorites, Trash) */}
+            {activeTab !== 'All Photos' && activeTab !== 'Settings' && (
               <div className="flex items-center justify-center h-64 text-gray-400 font-mono">
                 {activeTab} Content Here...
               </div>
