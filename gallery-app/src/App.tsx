@@ -1,29 +1,59 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import './App.css';
 import Sidebar from './components/Sidebar/Sidebar';
 import Navbar from './components/Navbar';
 import Gallery from './components/Gallery';
 import ImageViewer from './components/ImageViewer';
-import FolderManager from './components/FolderManager'; // <-- Import lag gaya
+import FolderManager from './components/FolderManager';
+import Titlebar from './components/Titlebar';
 
 export default function App() {
   const [gridSize, setGridSize] = useState<'small' | 'medium' | 'large'>('medium');
   const [activeTab, setActiveTab] = useState('All Photos');
-  
-  // State ab root level par hai
   const [selectedImage, setSelectedImage] = useState<{id: number, url: string} | null>(null);
+  
+  // Naya state jo Titlebar ko hide karega
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (e.key === 'F11' || e.code === 'F11') {
+        e.preventDefault(); 
+        try {
+          const appWindow = getCurrentWindow();
+          const currentFullscreen = await appWindow.isFullscreen();
+          
+          // True fullscreen trigger karo
+          await appWindow.setFullscreen(!currentFullscreen);
+          
+          // State update karo taaki Titlebar gayab ho jaye
+          setIsFullscreen(!currentFullscreen);
+        } catch (error) {
+          console.error("F11 Error:", error);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
-    // overflow-hidden yahan ensure karega ki root level pe koi scroll na ho
-    <div className="h-screen w-screen bg-[#0a0a0c] text-white flex overflow-hidden relative selection:bg-purple-500/30">
+    // Jab fullscreen hoga toh pt-8 (padding-top) hat jayega taaki app top se shuru ho
+    <div className={`h-screen w-screen bg-[#0a0a0c] text-white flex overflow-hidden relative selection:bg-purple-500/30 transition-all duration-300 ${!isFullscreen ? 'pt-8' : 'pt-0'}`}>
       
+      {/* Agar fullscreen NAHI hai, tabhi Titlebar dikhegi */}
+      {!isFullscreen && <Titlebar />}
+
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40 pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40 pointer-events-none"></div>
 
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 relative">
+      {/* YAHAN UPDATE KIYA HAI: overscroll-none aur scroll-smooth add kar diya */}
+      <div className="flex-1 flex flex-col h-full overflow-y-auto overscroll-none scroll-smooth p-6 relative">
         <Navbar gridSize={gridSize} setGridSize={setGridSize} />
 
         <AnimatePresence mode="wait">
@@ -35,17 +65,14 @@ export default function App() {
             transition={{ duration: 0.3, ease: 'easeOut' }}
             className="w-full h-full"
           >
-            {/* Main Gallery */}
             {activeTab === 'All Photos' && (
               <Gallery gridSize={gridSize} onImageClick={setSelectedImage} />
             )}
             
-            {/* Folder Sync UI */}
             {activeTab === 'Settings' && (
               <FolderManager />
             )}
             
-            {/* Baki placeholders (Albums, Favorites, Trash) */}
             {activeTab !== 'All Photos' && activeTab !== 'Settings' && (
               <div className="flex items-center justify-center h-64 text-gray-400 font-mono">
                 {activeTab} Content Here...
@@ -55,7 +82,6 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* MODAL SABSE UPAR HAI - Stacking context bypass ho gaya */}
       <AnimatePresence>
         {selectedImage && (
           <ImageViewer 
