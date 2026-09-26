@@ -18,11 +18,12 @@ struct ImageInfo {
     filename: String,
 }
 
-// 🔥 THUMBNAIL GENERATOR 🔥
+// 🔥 UPDATED THUMBNAIL GENERATOR 🔥
 #[tauri::command]
 async fn get_thumbnail(id: String, original_path: String) -> Result<String, String> {
     let mut cache_dir = env::temp_dir();
-    cache_dir.push("auvem_cache");
+    // 🔥 Cache folder ka naam badla taaki purane blurry thumbnails load na hon 🔥
+    cache_dir.push("auvem_cache_hq"); 
     
     if !cache_dir.exists() {
         let _ = fs::create_dir_all(&cache_dir);
@@ -35,11 +36,11 @@ async fn get_thumbnail(id: String, original_path: String) -> Result<String, Stri
         return Ok(thumb_str);
     }
 
-    // 🔥 FIX: Added explicit return type `-> Result<String, String>` to the closure
     let result = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let img = image::open(&original_path).map_err(|e| e.to_string())?;
         
-        let thumbnail = img.resize(400, 400, FilterType::Triangle); 
+        // 🔥 Resolution 400 se 800 kar diya ekdum crisp quality ke liye 🔥
+        let thumbnail = img.resize(800, 800, FilterType::Triangle); 
         
         thumbnail.save(&thumb_path).map_err(|e| e.to_string())?;
         Ok(thumb_str)
@@ -101,10 +102,23 @@ async fn fetch_synced_images(directories: Vec<String>) -> Result<Vec<ImageInfo>,
     Ok(images)
 }
 
+// 🔥 NAYA COMMAND: OS se file path lene ke liye (Open With feature) 🔥
+#[tauri::command]
+fn get_opened_file() -> Option<String> {
+    let args: Vec<String> = env::args().collect();
+    // Check karte hain ki koi argument aaya hai aur wo flag (--) nahi hai
+    if args.len() > 1 && !args[1].starts_with("--") {
+        Some(args[1].clone())
+    } else {
+        None
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![fetch_synced_images, get_thumbnail])
+        // 🔥 Yahan get_opened_file add kar diya gaya hai 🔥
+        .invoke_handler(tauri::generate_handler![fetch_synced_images, get_thumbnail, get_opened_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -5,10 +5,11 @@ import { X, Star, Trash2, RotateCcw, FolderPlus, Info, Maximize, Minimize, Expan
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export default function TopBar({ 
-  image, isFavorite, isTrashed, albums, 
+  // 🔥 FIX: 'image' prop hata diya kyunki yahan uska use nahi tha 🔥
+  isFavorite, isTrashed, albums, 
   showInfo, setShowInfo, 
   isCover, setIsCover, 
-  isAutoPlaying, setIsAutoPlaying, // Naye props
+  isAutoPlaying, setIsAutoPlaying,
   onClose, onToggleFavorite, onDelete, onRestore, onAddToAlbum 
 }: any) {
   const [showAlbumMenu, setShowAlbumMenu] = useState(false);

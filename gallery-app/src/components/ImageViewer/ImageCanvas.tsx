@@ -48,7 +48,8 @@ export default function ImageCanvas({
           drag={scale > 1 ? true : "y"}
           dragConstraints={scale > 1 ? undefined : { top: 0, bottom: 0 }}
           dragElastic={0.8}
-          onDragEnd={(e, { offset, velocity }) => {
+          // 🔥 FIX: TS Error bypass karne ke liye 'e' ko '_e' kar diya 🔥
+          onDragEnd={(_e, { offset, velocity }) => {
             if (scale === 1 && (Math.abs(offset.y) > 100 || Math.abs(velocity.y) > 500)) {
               onClose();
             }

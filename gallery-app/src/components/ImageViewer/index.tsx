@@ -18,7 +18,8 @@ export default function ImageViewer({
   const [isCover, setIsCover] = useState(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false); // 🔥 AUTOPLAY STATE
   
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // 🔥 FIX: NodeJS.Timeout ki jagah ReturnType<typeof setTimeout> use kiya
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isZoomed = scale > 1;
 
   // Auto-hide UI logic (3 seconds idle)
@@ -40,7 +41,8 @@ export default function ImageViewer({
 
   // 🔥 AUTOPLAY EFFECT 🔥
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    // 🔥 FIX: NodeJS.Timeout ki jagah ReturnType<typeof setInterval> use kiya
+    let interval: ReturnType<typeof setInterval>;
     if (isAutoPlaying) {
       setIsUiVisible(false); // Play hote hi UI hide kar do
       interval = setInterval(() => {
@@ -96,7 +98,6 @@ export default function ImageViewer({
 
       <AnimatePresence>
         {isUiVisible && !isZoomed && (
-          // 🔥 SLOW CINEMATIC FADE (duration: 0.8s) 🔥
           <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 

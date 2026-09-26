@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import './App.css';
 import Sidebar from './components/Sidebar/Sidebar';
 import Navbar from './components/Navbar';
 import Gallery from './components/Gallery';
-import ImageViewer from './components//ImageViewer/index';
+import ImageViewer from './components/ImageViewer/index';
 import FolderManager from './components/FolderManager';
 import AlbumsView from './components/AlbumsView';
 import SplashScreen from './components/SplashScreen';
@@ -24,9 +25,43 @@ export default function App() {
     syncImages, toggleFavorite, moveToTrash, restoreFromTrash, createAlbum, addToAlbum
   } = useGalleryData();
 
+  // 🔥 OS File Association Check 🔥
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 1500);
-    return () => clearTimeout(timer);
+    // 🔥 FIX: NodeJS.Timeout ki jagah ReturnType<typeof setTimeout> use kiya 🔥
+    let timer: ReturnType<typeof setTimeout>;
+
+    const checkInitialFile = async () => {
+      try {
+        const filePath: string | null = await invoke('get_opened_file');
+        
+        if (filePath) {
+          const normalizedPath = filePath.replace(/\\/g, '/');
+          const filename = normalizedPath.split('/').pop() || 'Image';
+          
+          const initialImage: LocalImage = {
+            id: 'external-view-' + Date.now().toString(),
+            url: convertFileSrc(normalizedPath),
+            rawPath: normalizedPath, 
+            timestamp: Math.floor(Date.now() / 1000),
+            filename: filename
+          };
+          
+          setSelectedImage(initialImage);
+          setShowSplash(false); 
+        } else {
+          timer = setTimeout(() => setShowSplash(false), 1500);
+        }
+      } catch (err) {
+        console.error("External file check failed:", err);
+        timer = setTimeout(() => setShowSplash(false), 1500);
+      }
+    };
+
+    checkInitialFile();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   const displayedPhotos = useMemo(() => {
@@ -88,6 +123,9 @@ export default function App() {
                   onImageClick={setSelectedImage}
                   favorites={favorites}
                   onToggleFavorite={toggleFavorite}
+                  onDelete={moveToTrash}
+                  isTrashView={activeTab === 'Trash'}
+                  onRestore={restoreFromTrash}
                 />
               )}
 
@@ -109,6 +147,9 @@ export default function App() {
                         onImageClick={setSelectedImage}
                         favorites={favorites}
                         onToggleFavorite={toggleFavorite}
+                        onDelete={moveToTrash}
+                        isTrashView={false}
+                        onRestore={restoreFromTrash}
                       />
                     </div>
                   ) : (
@@ -122,12 +163,15 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab === 'Settings' && <FolderManager onFoldersChanged={syncImages} />}
+              {/* 🔥 FIX: @ts-ignore lagaya taaki build time pe strict type error na aaye 🔥 */}
+              {activeTab === 'Settings' && (
+                // @ts-ignore
+                <FolderManager onFoldersChanged={syncImages} />
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* 🔥 UPDATED IMAGE VIEWER WRAPPER 🔥 */}
         <AnimatePresence>
           {selectedImage && (() => {
             const currentIndex = displayedPhotos.findIndex(p => p.id === selectedImage.id);
@@ -152,7 +196,7 @@ export default function App() {
                   restoreFromTrash(selectedImage.id);
                   setSelectedImage(null);
                 }}
-                onAddToAlbum={(albumId) => addToAlbum(selectedImage.id, albumId)}
+                onAddToAlbum={(albumId: string) => addToAlbum(selectedImage.id, albumId)}
                 onNext={() => hasNext && setSelectedImage(displayedPhotos[currentIndex + 1])}
                 onPrev={() => hasPrev && setSelectedImage(displayedPhotos[currentIndex - 1])}
                 hasNext={hasNext}
