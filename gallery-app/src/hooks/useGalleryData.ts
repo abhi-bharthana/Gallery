@@ -3,10 +3,12 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 
 export interface LocalImage {
   id: string;
-  url: string;        // Asset URL (Frontend mein render karne ke liye)
-  rawPath: string;    // 🔥 Raw Path (Rust ko thumbnail banane ke liye dene ke liye)
+  url: string;
+  rawPath: string;
   timestamp: number;
   filename: string;
+  width: number;  // 🔥 NAYA
+  height: number; // 🔥 NAYA
 }
 
 export interface Album {
@@ -44,6 +46,8 @@ export function useGalleryData() {
         rawPath: img.url, // 🔥 Ye add kiya gaya hai
         timestamp: img.timestamp,
         filename: img.filename,
+        width: img.width || 800,  // 🔥 ADD THIS
+        height: img.height || 800
       }));
       
       setAllPhotos(loaded);

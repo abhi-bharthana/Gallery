@@ -1,11 +1,13 @@
+// src/App.tsx
 import { useEffect, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window'; // 🔥 NAYA IMPORT 🔥
 import './App.css';
 import Sidebar from './components/Sidebar/Sidebar';
 import Navbar from './components/Navbar';
-import Gallery from './components/Gallery';
+import Gallery from './components/Gallery/index';
 import ImageViewer from './components/ImageViewer/index';
 import FolderManager from './components/FolderManager';
 import AlbumsView from './components/AlbumsView';
@@ -27,7 +29,6 @@ export default function App() {
 
   // 🔥 OS File Association Check 🔥
   useEffect(() => {
-    // 🔥 FIX: NodeJS.Timeout ki jagah ReturnType<typeof setTimeout> use kiya 🔥
     let timer: ReturnType<typeof setTimeout>;
 
     const checkInitialFile = async () => {
@@ -43,7 +44,9 @@ export default function App() {
             url: convertFileSrc(normalizedPath),
             rawPath: normalizedPath, 
             timestamp: Math.floor(Date.now() / 1000),
-            filename: filename
+            filename: filename,
+            width: 800,   // Fallback dimensions for external files
+            height: 800   
           };
           
           setSelectedImage(initialImage);
@@ -62,6 +65,21 @@ export default function App() {
     return () => {
       if (timer) clearTimeout(timer);
     };
+  }, []);
+
+  // 🔥 F11 FULLSCREEN TOGGLE FIX 🔥
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault(); 
+        const appWindow = getCurrentWindow();
+        const isFullscreen = await appWindow.isFullscreen();
+        await appWindow.setFullscreen(!isFullscreen);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const displayedPhotos = useMemo(() => {
@@ -95,6 +113,10 @@ export default function App() {
           setActiveTab={(tab) => {
             setActiveTab(tab);
             setSelectedAlbumId(null);
+            
+            if (tab === 'All Photos') {
+               syncImages();
+            }
           }}
         />
 
@@ -184,7 +206,17 @@ export default function App() {
                 isFavorite={favorites.includes(selectedImage.id)}
                 isTrashed={trash.includes(selectedImage.id)}
                 albums={albums}
-                onClose={() => setSelectedImage(null)}
+                
+                // 🔥 NAYA FIX: External file se open hone par seedha app close karo 🔥
+                onClose={async () => {
+                  if (selectedImage.id.startsWith('external-view-')) {
+                    const appWindow = getCurrentWindow();
+                    await appWindow.close();
+                  } else {
+                    setSelectedImage(null);
+                  }
+                }}
+
                 onToggleFavorite={() => toggleFavorite(selectedImage.id)}
                 onDelete={() => {
                   moveToTrash(selectedImage.id);

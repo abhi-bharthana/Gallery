@@ -16,11 +16,13 @@ export default function ImageViewer({
   
   const [isUiVisible, setIsUiVisible] = useState(true);
   const [isCover, setIsCover] = useState(false);
-  const [isAutoPlaying, setIsAutoPlaying] = useState(false); // 🔥 AUTOPLAY STATE
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false); 
   
-  // 🔥 FIX: NodeJS.Timeout ki jagah ReturnType<typeof setTimeout> use kiya
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isZoomed = scale > 1;
+
+  // 🔥 MAIN FIX: External view ka pata lagana
+  const isExternal = image?.id?.startsWith('external-view-');
 
   // Auto-hide UI logic (3 seconds idle)
   useEffect(() => {
@@ -39,16 +41,14 @@ export default function ImageViewer({
     };
   }, []);
 
-  // 🔥 AUTOPLAY EFFECT 🔥
   useEffect(() => {
-    // 🔥 FIX: NodeJS.Timeout ki jagah ReturnType<typeof setInterval> use kiya
     let interval: ReturnType<typeof setInterval>;
     if (isAutoPlaying) {
-      setIsUiVisible(false); // Play hote hi UI hide kar do
+      setIsUiVisible(false); 
       interval = setInterval(() => {
         if (hasNext) onNext?.();
-        else setIsAutoPlaying(false); // Last photo pe ruk jao
-      }, 3000); // 3 sec timer
+        else setIsAutoPlaying(false); 
+      }, 3000); 
     }
     return () => clearInterval(interval);
   }, [isAutoPlaying, hasNext, onNext]);
@@ -60,7 +60,7 @@ export default function ImageViewer({
       if (scale === 1) { 
         if (e.key === 'ArrowRight' && hasNext) onNext?.();
         if (e.key === 'ArrowLeft' && hasPrev) onPrev?.();
-        if (e.key === ' ') setIsAutoPlaying(prev => !prev); // Spacebar se Play/Pause
+        if (e.key === ' ') setIsAutoPlaying(prev => !prev); 
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -109,8 +109,14 @@ export default function ImageViewer({
               showInfo={showInfo} setShowInfo={setShowInfo}
               isCover={isCover} setIsCover={setIsCover}
               isAutoPlaying={isAutoPlaying} setIsAutoPlaying={setIsAutoPlaying}
-              onClose={onClose} onToggleFavorite={onToggleFavorite} onDelete={onDelete} 
-              onRestore={onRestore} onAddToAlbum={onAddToAlbum}
+              onClose={onClose} 
+              
+              // 🔥 EXTERNAL HIDE LOGIC: External hone par in functions ko undefined bhej do
+              isExternal={isExternal}
+              onToggleFavorite={isExternal ? undefined : onToggleFavorite} 
+              onDelete={isExternal ? undefined : onDelete} 
+              onRestore={isExternal ? undefined : onRestore} 
+              onAddToAlbum={isExternal ? undefined : onAddToAlbum}
             />
             <Navigation onNext={onNext} onPrev={onPrev} hasNext={hasNext} hasPrev={hasPrev} />
           </motion.div>
