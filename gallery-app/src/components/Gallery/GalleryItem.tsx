@@ -4,7 +4,6 @@ import { Star, Trash2, Check, RotateCcw } from 'lucide-react';
 import Thumbnail from './Thumbnail';
 import { LocalImage } from '../../hooks/useGalleryData';
 
-// 🔥 PROPER TYPES RESTORED 🔥
 interface GalleryItemProps {
   item: LocalImage;
   gridSize: 'small' | 'medium' | 'large';
@@ -39,10 +38,10 @@ export default function GalleryItem({
 
   return (
     <motion.div
-      layout
+      // 🔥 Layout animation hata di hai taaki heavy re-calculations aur UI freezes na hon
       initial={{ opacity: 0, scale: 0.98 }} 
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ layout: { type: "spring", stiffness: 250, damping: 28, mass: 0.9 }, default: { duration: 0.4 } }}
+      transition={{ duration: 0.3 }}
       style={{ 
         aspectRatio: `${ratio}`,
         flexGrow: ratio,
@@ -50,10 +49,6 @@ export default function GalleryItem({
       }}
       className={`relative group shrink-0 max-w-full ${sizeClasses}`}
     >
-      <div className="absolute inset-0 z-0 opacity-0 group-hover:opacity-100 group-hover:scale-[1.08] transition-all duration-700 ease-out pointer-events-none">
-        <Thumbnail image={item} gridSize={gridSize} className="w-full h-full object-cover rounded-[1.75rem] blur-[40px] saturate-200 brightness-110 opacity-70" />
-      </div>
-
       <div 
         onClick={(e) => {
           if (e.ctrlKey || e.metaKey || isSelectionMode) {
@@ -65,14 +60,19 @@ export default function GalleryItem({
         }}
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
-        className={`relative overflow-hidden cursor-pointer bg-[#121214] rounded-[1.75rem] border w-full h-full transition-all duration-300 z-10 ${isSelected ? 'border-purple-500 scale-[0.95] shadow-[0_0_30px_rgba(168,85,247,0.3)]' : 'border-white/[0.04] hover:border-white/10'}`}
+        className={`relative overflow-hidden cursor-pointer bg-[#121214] rounded-[1.75rem] border w-full h-full transition-all duration-300 z-10 ${
+          isSelected 
+            ? 'border-purple-500 scale-[0.95] shadow-[0_0_30px_rgba(168,85,247,0.3)]' 
+            : 'border-white/[0.04] hover:border-white/10 hover:shadow-xl'
+        }`}
       >
-        <Thumbnail image={item} gridSize={gridSize} className="w-full h-full object-cover transition-transform duration-[1.5s] ease-out group-hover:scale-105" />
+        {/* 🔥 Sirf ek hi lightweight Thumbnail render hoga (Double load khatam) */}
+        <Thumbnail image={item} gridSize={gridSize} className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
         
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none"></div>
         
         {isSelected && (
-          <div className="absolute top-4 left-4 z-20 bg-purple-500 text-white rounded-full p-1.5 shadow-lg scale-100 animate-in zoom-in">
+          <div className="absolute top-4 left-4 z-20 bg-purple-500 text-white rounded-full p-1.5 shadow-lg scale-100">
             <Check size={16} strokeWidth={3} />
           </div>
         )}

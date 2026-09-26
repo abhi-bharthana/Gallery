@@ -97,13 +97,12 @@ export default function Gallery({ photos, isLoading, gridSize, onImageClick, fav
 
   return (
     <main className="relative z-10 w-full max-w-7xl mx-auto pb-12 space-y-12 select-none">
-      {groupedImages.map((group, index) => (
+      {groupedImages.map((group, groupIndex) => (
         <motion.div 
-          key={group.date} 
-          // 🔥 PREMIUM WATERFALL REVEAL 🔥
+          key={group.date || `group-${groupIndex}`} 
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut", delay: index * 0.08 }}
+          transition={{ duration: 0.6, ease: "easeOut", delay: groupIndex * 0.08 }}
           className="w-full relative"
         >
           <div className="sticky top-4 z-30 flex justify-start mb-6 pointer-events-none">
@@ -114,33 +113,38 @@ export default function Gallery({ photos, isLoading, gridSize, onImageClick, fav
           </div>
 
           <div className="flex flex-wrap gap-3 sm:gap-4 after:content-[''] after:flex-grow-[10] after:h-0">
-            {group.images.map((item) => (
-              <GalleryItem
-                key={item.id}
-                item={item}
-                gridSize={gridSize}
-                isFav={favorites.includes(item.id)}
-                isSelected={selectedIds.has(item.id)}
-                isSelectionMode={selectedIds.size > 0}
-                isTrashView={isTrashView}
-                onImageClick={onImageClick}
-                toggleSelect={toggleSelect}
-                onToggleFavorite={onToggleFavorite}
-                onDelete={onDelete}
-                onRestore={onRestore}
-                onPointerDown={() => {
-                  const now = Date.now();
-                  if (now - lastTapRef.current < 300) { 
-                    isDragSelecting.current = true;
-                    setSelectedIds(prev => new Set(prev).add(item.id)); 
-                  }
-                  lastTapRef.current = now;
-                }}
-                onPointerEnter={() => {
-                  if (isDragSelecting.current) setSelectedIds(prev => new Set(prev).add(item.id));
-                }}
-              />
-            ))}
+            {group.images.map((item, itemIndex) => {
+              // 🔥 Bulletproof Unique Key Generator
+              const safeKey = item.id && item.id.trim() !== '' ? item.id : `fallback-${group.date}-${itemIndex}`;
+
+              return (
+                <GalleryItem
+                  key={safeKey}
+                  item={item}
+                  gridSize={gridSize}
+                  isFav={favorites.includes(item.id)}
+                  isSelected={selectedIds.has(item.id)}
+                  isSelectionMode={selectedIds.size > 0}
+                  isTrashView={isTrashView}
+                  onImageClick={onImageClick}
+                  toggleSelect={toggleSelect}
+                  onToggleFavorite={onToggleFavorite}
+                  onDelete={onDelete}
+                  onRestore={onRestore}
+                  onPointerDown={() => {
+                    const now = Date.now();
+                    if (now - lastTapRef.current < 300) { 
+                      isDragSelecting.current = true;
+                      setSelectedIds(prev => new Set(prev).add(item.id)); 
+                    }
+                    lastTapRef.current = now;
+                  }}
+                  onPointerEnter={() => {
+                    if (isDragSelecting.current) setSelectedIds(prev => new Set(prev).add(item.id));
+                  }}
+                />
+              );
+            })}
           </div>
         </motion.div>
       ))}

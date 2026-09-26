@@ -1,70 +1,80 @@
 // src/components/Gallery/Thumbnail.tsx
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { LocalImage } from '../../hooks/useGalleryData';
 
 interface ThumbnailProps {
   image: LocalImage;
-  className: string;
-  gridSize?: 'small' | 'medium' | 'large';
+  gridSize: 'small' | 'medium' | 'large';
+  className?: string;
 }
 
-export default function Thumbnail({ image, className, gridSize = 'medium' }: ThumbnailProps) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+// 🛡️ Global cache map taaki scroll karne par dobara fetch na karna pade
+const thumbnailCache = new Map<string, string>();
 
-  const resolution = useMemo(() => {
-    if (gridSize === 'small') return 400;
-    if (gridSize === 'medium') return 800;
-    return 1200;
-  }, [gridSize]);
+export default function Thumbnail({ image, gridSize, className }: ThumbnailProps) {
+  const [thumbnailSrc, setThumbnailSrc] = useState<string>(() => {
+    return thumbnailCache.get(image.id) || '';
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(!thumbnailCache.has(image.id));
 
   useEffect(() => {
-    let mounted = true;
-    setSrc(null);
-    setIsLoaded(false);
+    if (thumbnailCache.has(image.id)) {
+      setThumbnailSrc(thumbnailCache.get(image.id)!);
+      setIsLoading(false);
+      return;
+    }
 
-    invoke('get_thumbnail', { id: image.id, originalPath: image.rawPath, size: resolution })
-      .then((thumbPath) => { 
-        if (mounted) {
-          if (thumbPath) setSrc(convertFileSrc(thumbPath as string)); 
-          else setSrc(image.url); 
+    let isMounted = true;
+    const size = gridSize === 'small' ? 200 : gridSize === 'medium' ? 400 : 800;
+
+    invoke('get_thumbnail', { 
+      id: image.id, 
+      originalPath: image.rawPath, 
+      size 
+    })
+      .then((path) => {
+        if (isMounted && typeof path === 'string') {
+          const converted = convertFileSrc(path);
+          thumbnailCache.set(image.id, converted);
+          setThumbnailSrc(converted);
         }
       })
-      .catch((_err) => { 
-        if (mounted) setSrc(image.url); 
+      .catch((err) => {
+        console.error("Thumbnail load failed for:", image.filename, err);
+        // Fallback to original path agar thumbnail fail ho jaye toh app crash na ho
+        if (isMounted) {
+          const fallback = convertFileSrc(image.rawPath);
+          setThumbnailSrc(fallback);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
       });
 
-    return () => { mounted = false; };
-  }, [image.id, image.rawPath, image.url, resolution]);
-
-  const isBlurLayer = className.includes('blur-');
+    return () => {
+      isMounted = false;
+    };
+  }, [image.id, image.rawPath, gridSize]);
 
   return (
-    <>
-      {/* 1. SKELETON: Clean dark placeholder jo baaki UI block nahi karega */}
-      {!isLoaded && !isBlurLayer && (
-        <div className={`absolute inset-0 bg-[#121214] animate-pulse pointer-events-none z-0 ${className.includes('rounded') ? 'rounded-[1.75rem]' : ''}`} />
-      )}
-
-      {/* 2. SMART WRAPPER: Fade aur Blur strictly is div se control hoga */}
-      {src && (
-        <div 
-          className={`w-full h-full pointer-events-none transition-all duration-[1.2s] ease-out ${
-            isLoaded ? 'opacity-100' : 'opacity-0'
-          } ${!isBlurLayer ? (isLoaded ? 'blur-0' : 'blur-xl') : ''}`}
-        >
-          {/* 3. MAIN IMAGE: Is par sirf Tailwind ka hover scale chalega, koi interference nahi! */}
-          <img 
-            src={src} 
-            alt={image.filename} 
-            loading="lazy" 
-            decoding="async" 
-            onLoad={() => setIsLoaded(true)}
-            className={className} 
-          />
+    <div className={`relative overflow-hidden bg-zinc-900 ${className}`}>
+      {isLoading && (
+        <div className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center">
+          <div className="w-4 h-4 border-2 border-purple-500/40 border-t-purple-500 rounded-full animate-spin"></div>
         </div>
       )}
-    </>
+      {thumbnailSrc ? (
+        <img 
+          src={thumbnailSrc} 
+          alt={image.filename}
+          loading="lazy"
+          decoding="async"
+          className={`w-full h-full object-cover transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+        />
+      ) : (
+        <div className="w-full h-full bg-zinc-800/50" />
+      )}
+    </div>
   );
 }
