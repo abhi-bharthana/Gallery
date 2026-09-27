@@ -1,6 +1,6 @@
 // src/components/VideoPlayer/useVideoPlayer.ts
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useVideoTracks } from './useVideoTracks'; // 🔥 NAYA HOOK IMPORT KIYA
+import { useVideoTracks } from './useVideoTracks';
 
 export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, onToggleFavorite }: any) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -28,17 +28,26 @@ export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, o
   const badgeResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accumulatedSkipRef = useRef(0);
   const [ripple, setRipple] = useState<{ side: 'left' | 'right'; key: number } | null>(null);
+  const rippleHideRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 🔥 Added missing ref
   const [favoriteStar, setFavoriteStar] = useState<{ x: number, y: number, key: number } | null>(null); 
   const favoriteStarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); 
   const clickCountRef = useRef(0);
   const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 🔥 TRACKS KA PURA DIMAAG AB DUSRI FILE MEIN HAI
+  // 🔥 THE FIX: Yahan se streamSrc aur mediaDuration bhi import kar liya
   const {
     activeMenu, setActiveMenu, audioTracks, activeAudio, handleAudioChange,
-    subTracks, activeSub, handleSubChange, activeSubUrl
+    subTracks, activeSub, handleSubChange, activeSubUrl,
+    streamSrc, mediaDuration
   } = useVideoTracks(src, videoRef, setIsLoading);
+
+  // 🔥 THE FIX: Jaise hi Rust se mediaDuration aaye, state update kar do
+  useEffect(() => {
+    if (mediaDuration > 0) {
+      setDuration(mediaDuration);
+    }
+  }, [mediaDuration]);
 
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
@@ -108,7 +117,9 @@ export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, o
 
   const skip = (amount: number) => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.min(Math.max(videoRef.current.currentTime + amount, 0), duration || Infinity);
+    // 🔥 THE FIX: Skip logic ab true duration par chalega
+    const actualDuration = mediaDuration > 0 ? mediaDuration : duration;
+    videoRef.current.currentTime = Math.min(Math.max(videoRef.current.currentTime + amount, 0), actualDuration || Infinity);
     accumulatedSkipRef.current += amount;
     showSkipBadge(accumulatedSkipRef.current);
   };
@@ -140,23 +151,34 @@ export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, o
     }
   };
 
+  // 🔥 THE FIX: Time Update logic ab browser duration ko ignore karke apni asli duration use karega
   const handleTimeUpdate = () => {
     if (!videoRef.current || isScrubbing) return;
-    const { currentTime: t, duration: d } = videoRef.current;
-    setCurrentTime(t); setDuration(d || 0); setProgress(d > 0 ? (t / d) * 100 : 0);
+    const t = videoRef.current.currentTime;
+    const actualDuration = mediaDuration > 0 ? mediaDuration : (videoRef.current.duration || 0);
+    setCurrentTime(t); 
+    setDuration(actualDuration); 
+    setProgress(actualDuration > 0 ? (t / actualDuration) * 100 : 0);
   };
 
+  // 🔥 THE FIX: Buffer progress bar me bhi wahi fix
   const handleProgress = () => {
     const v = videoRef.current;
-    if (!v || !v.duration) return;
+    const actualDuration = mediaDuration > 0 ? mediaDuration : (v?.duration || 0);
+    if (!v || !actualDuration) return;
     for (let i = v.buffered.length - 1; i >= 0; i--) {
       if (v.buffered.start(i) <= v.currentTime) {
-        setBuffered((v.buffered.end(i) / v.duration) * 100); break;
+        setBuffered((v.buffered.end(i) / actualDuration) * 100); break;
       }
     }
   };
 
-  const handleLoadedMetadata = () => { if (videoRef.current) setDuration(videoRef.current.duration); };
+  const handleLoadedMetadata = () => { 
+    if (videoRef.current) {
+      setDuration(mediaDuration > 0 ? mediaDuration : (videoRef.current.duration || 0));
+    }
+  };
+  
   const pctFromEvent = (clientX: number, rect: DOMRect) => Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
 
   const handleScrubStart = (e: React.MouseEvent<HTMLDivElement>) => { e.stopPropagation(); setIsScrubbing(true); setProgress(pctFromEvent(e.clientX, e.currentTarget.getBoundingClientRect())); };
@@ -165,10 +187,17 @@ export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, o
     if (!isScrubbing) return;
     const bar = containerRef.current?.querySelector('[data-scrub-track]') as HTMLDivElement | null;
     const onMove = (e: MouseEvent) => { if (!bar) return; setProgress(pctFromEvent(e.clientX, bar.getBoundingClientRect())); };
-    const onUp = () => { if (videoRef.current && duration > 0) videoRef.current.currentTime = (progress / 100) * duration; setIsScrubbing(false); };
+    const onUp = () => { 
+      // 🔥 THE FIX: Scrub karke seek karte waqt asli duration ke hisaab se seek ho
+      const actualDuration = mediaDuration > 0 ? mediaDuration : duration;
+      if (videoRef.current && actualDuration > 0) {
+        videoRef.current.currentTime = (progress / 100) * actualDuration; 
+      }
+      setIsScrubbing(false); 
+    };
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [isScrubbing, duration]);
+  }, [isScrubbing, duration, progress, mediaDuration]);
 
   const handleTrackHover = (e: React.MouseEvent<HTMLDivElement>) => setHoverPct(pctFromEvent(e.clientX, e.currentTarget.getBoundingClientRect()));
   const changeVolume = (val: number) => { setVolume(val); if (videoRef.current) videoRef.current.volume = val; setIsMuted(val === 0); };
@@ -177,6 +206,8 @@ export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, o
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!containerRef.current?.contains(document.activeElement) && document.activeElement !== document.body) return;
+      const actualDuration = mediaDuration > 0 ? mediaDuration : duration;
+      
       switch (e.key.toLowerCase()) {
         case ' ': case 'k': e.preventDefault(); togglePlay(); break;
         case 'j': e.preventDefault(); skip(-10); break;
@@ -190,12 +221,12 @@ export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, o
         case 'i': togglePiP(); break; 
         case 'c': handleSubChange(activeSub === -1 && subTracks.length > 0 ? subTracks[0].index : -1); break;
         case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-          if (videoRef.current && duration > 0) videoRef.current.currentTime = (parseInt(e.key) / 10) * duration; break;
+          if (videoRef.current && actualDuration > 0) videoRef.current.currentTime = (parseInt(e.key) / 10) * actualDuration; break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [volume, isPlaying, duration, subTracks, activeSub, handleSubChange]);
+  }, [volume, isPlaying, duration, subTracks, activeSub, handleSubChange, mediaDuration]);
 
   const formatTime = (secs: number) => {
     if (!isFinite(secs) || isNaN(secs)) return '0:00';
@@ -211,6 +242,7 @@ export function useVideoPlayer({ src, title, hasNext, hasPrev, onNext, onPrev, o
     activeMenu, setActiveMenu, audioTracks, activeAudio, handleAudioChange, subTracks, activeSub, handleSubChange, activeSubUrl,
     toggleFullscreen, togglePiP, togglePlay, handleControlSkip, handleVideoAreaClick, handleTimeUpdate, 
     handleProgress, handleLoadedMetadata, handleScrubStart, handleTrackHover, setHoverPct, changeVolume, 
-    setIsMuted, handlePlaybackRateChange, formatTime, setIsPlaying, setIsLoading
+    setIsMuted, handlePlaybackRateChange, formatTime, setIsPlaying, setIsLoading,
+    streamSrc, mediaDuration // 🔥 EXPORTED! Ab index.tsx isko easily map kar payega!
   };
 }

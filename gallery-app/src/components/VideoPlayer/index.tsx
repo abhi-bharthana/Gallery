@@ -60,11 +60,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         />
       )}
 
-      {!state.isPiPActive && (
+{!state.isPiPActive && (
         <BottomControls
           showControls={state.showControls} isPlaying={state.isPlaying} togglePlay={state.togglePlay} 
           progress={state.progress} buffered={state.buffered} hoverPct={state.hoverPct} 
-          duration={state.duration} currentTime={state.currentTime} volume={state.volume} 
+          
+          // 🔥 THE FIX: Agar native duration 0 hai, toh backend wali duration (mediaDuration) use karo
+          duration={state.mediaDuration || state.duration} 
+          
+          currentTime={state.currentTime} volume={state.volume} 
           isMuted={state.isMuted} showSpeedMenu={state.showSpeedMenu} playbackRate={state.playbackRate}
           isCover={props.isCover} isFullscreen={state.isFullscreen} hasNext={props.hasNext} hasPrev={props.hasPrev}
           formatTime={state.formatTime} handleScrubStart={state.handleScrubStart} 
@@ -75,7 +79,6 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           onToggleCover={props.onToggleCover} toggleFullscreen={state.toggleFullscreen}
           onNext={props.onNext} onPrev={props.onPrev}
           
-          // Audio & Subtitles Menu Props
           activeMenu={state.activeMenu} setActiveMenu={state.setActiveMenu}
           audioTracks={state.audioTracks} activeAudio={state.activeAudio} handleAudioChange={state.handleAudioChange}
           subTracks={state.subTracks} activeSub={state.activeSub} handleSubChange={state.handleSubChange}

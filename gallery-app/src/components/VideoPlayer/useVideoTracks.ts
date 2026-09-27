@@ -12,18 +12,23 @@ export function useVideoTracks(src: string, videoRef: React.RefObject<HTMLVideoE
   const [activeSub, setActiveSub] = useState<number>(-1);
   const [activeSubUrl, setActiveSubUrl] = useState<string | null>(null);
 
-  // 🔥 Playable stream URL jo video tag mein jayega
   const [streamSrc, setStreamSrc] = useState<string>(src);
+  
+  // 🔥 Nayi state: Backend se aayi exact duration store karne ke liye
+  const [mediaDuration, setMediaDuration] = useState<number>(0);
 
   useEffect(() => {
     async function initStreamingAndTracks() {
       if (!src) return;
       try {
         console.log("🚀 [FRONTEND] Invoking get_video_tracks with src:", src);
-        // 🔥 Rust backend ab { tracks: [...], duration: number } object return karta hai
         const metadata: any = await invoke('get_video_tracks', { videoPath: src });
-        console.log("🎯 [FRONTEND] Response from Rust metadata:", metadata);
         
+        // 🔥 Duration Set kardo turant!
+        if (metadata.duration) {
+          setMediaDuration(metadata.duration);
+        }
+
         const tracks = metadata.tracks || [];
         
         const audio = tracks
@@ -47,7 +52,7 @@ export function useVideoTracks(src: string, videoRef: React.RefObject<HTMLVideoE
         let defaultAudioIdx = 0;
         if (audio.length > 0) {
           setAudioTracks(audio);
-          defaultAudioIdx = audio[0].index; // Pehla audio track index uthao
+          defaultAudioIdx = audio[0].index;
           setActiveAudio(defaultAudioIdx);
         } else {
           setAudioTracks([{ index: 0, displayName: 'Default Audio (Stream 1)' }]);
@@ -63,20 +68,20 @@ export function useVideoTracks(src: string, videoRef: React.RefObject<HTMLVideoE
         setActiveSub(-1);
         setActiveSubUrl(null);
 
-        // 🔥 INITIAL STREAM SETUP: Video mount hote hi pehle audio track ke sath backend stream activate karo
         setIsLoading(true);
         const serverUrl: string = await invoke('set_active_media_stream', { 
           videoPath: src, 
           audioIndex: defaultAudioIdx 
         });
         
-        // Cache buster add karke stream URL set karo taaki browser turant stream play kare
         const activeStreamUrl = `${serverUrl}?t=${Date.now()}`;
         setStreamSrc(activeStreamUrl);
         setIsLoading(false);
 
-        // Agar video element pehle se ready hai toh safe play trigger karo
+        // 🔥 THE FIX: Direct DOM manipulation taaki auto-play ekdum instant ho
         if (videoRef.current) {
+          videoRef.current.src = activeStreamUrl;
+          videoRef.current.load(); // Browser ko naya source load karne bolna
           videoRef.current.play().catch((err) => {
             if (err.name !== 'AbortError') {
               console.error("Initial video play error:", err);
@@ -88,13 +93,12 @@ export function useVideoTracks(src: string, videoRef: React.RefObject<HTMLVideoE
         console.error("❌ [FRONTEND ERROR] Failed to initialize tracks/stream:", err);
         setAudioTracks([{ index: 0, displayName: 'Fallback Audio' }]);
         setSubTracks([]);
-        setStreamSrc(src); // Fallback to raw file if error
+        setStreamSrc(src);
       }
     }
     initStreamingAndTracks();
   }, [src]);
 
-  // 🔥 AUDIO CHANGE: Backend par audio index update karke video stream reload karna
   const handleAudioChange = async (trackIndex: number) => {
     console.log("🔊 Switching to audio stream index:", trackIndex);
     setActiveAudio(trackIndex);
@@ -107,17 +111,14 @@ export function useVideoTracks(src: string, videoRef: React.RefObject<HTMLVideoE
         audioIndex: trackIndex 
       });
       
-      // 🔥 Timestamp add karke naya stream URL generate karna taaki FFmpeg naye audio track ke sath restart ho
       const newStreamUrl = `${serverUrl}?audio=${trackIndex}&t=${Date.now()}`;
       setStreamSrc(newStreamUrl);
 
-      // Agar video reference maujood hai toh current time save karke reload karo
       if (videoRef.current) {
         const currentTime = videoRef.current.currentTime;
         videoRef.current.src = newStreamUrl;
         videoRef.current.currentTime = currentTime;
         
-        // 🔥 Safe play call with AbortError filtering
         videoRef.current.play().catch((err) => {
           if (err.name !== 'AbortError') {
             console.error("Video play error during audio switch:", err);
@@ -126,7 +127,6 @@ export function useVideoTracks(src: string, videoRef: React.RefObject<HTMLVideoE
       }
 
       setIsLoading(false);
-      console.log("🚀 [STREAM] Successfully switched audio stream via backend!");
     } catch (err) {
       console.error("❌ Failed to switch audio stream on backend:", err);
       setIsLoading(false);
@@ -165,6 +165,7 @@ export function useVideoTracks(src: string, videoRef: React.RefObject<HTMLVideoE
     activeMenu, setActiveMenu,
     audioTracks, activeAudio, handleAudioChange,
     subTracks, activeSub, handleSubChange, activeSubUrl,
-    streamSrc // 🔥 Exporting this so VideoPlayer index.tsx can use it as video src
+    streamSrc,
+    mediaDuration // 🔥 Backend ki exact duration ab component ko expose ho gayi
   };
 }
