@@ -8,6 +8,7 @@ import SelectionBar from './SelectionBar';
 
 export interface GalleryProps {
   photos: LocalImage[];
+  videoHistory?: Record<string, any>; // 🔥 NAYA: History prop add kiya
   isLoading: boolean;
   gridSize: 'small' | 'medium' | 'large';
   onImageClick: (image: LocalImage) => void;
@@ -18,7 +19,7 @@ export interface GalleryProps {
   onRestore?: (id: string) => void; 
 }
 
-export default function Gallery({ photos, isLoading, gridSize, onImageClick, favorites, onToggleFavorite, onDelete, isTrashView, onRestore }: GalleryProps) {
+export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize, onImageClick, favorites, onToggleFavorite, onDelete, isTrashView, onRestore }: GalleryProps) {
   const [displayCount, setDisplayCount] = useState(50);
   const observerTarget = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -71,6 +72,26 @@ export default function Gallery({ photos, isLoading, gridSize, onImageClick, fav
     return Object.entries(groups).map(([date, imgs]) => ({ date, images: imgs }));
   }, [visiblePhotos]);
 
+  // 🔥 THE MAGIC: Continue Watching list nikalne ka logic
+  const continueWatching = useMemo(() => {
+    if (isTrashView || !photos.length || Object.keys(videoHistory).length === 0) return [];
+    
+    return Object.entries(videoHistory)
+      .sort((a, b) => b[1].last_watched_at - a[1].last_watched_at) // Sabse recent pehle
+      .map(([path, data]) => {
+         const photo = photos.find(p => p.rawPath.replace(/\\/g, '/') === path);
+         
+         if (photo && data.duration > 0) {
+            const pct = data.progress / data.duration;
+            // Agar video 1% se zyada aur 98% se kam dekhi hai tabhi dikhao
+            if (pct > 0.01 && pct < 0.98) return { photo, data };
+         }
+         return null;
+      })
+      .filter(Boolean)
+      .slice(0, 8); // Sirf top 8 recent videos dikhayenge
+  }, [videoHistory, photos, isTrashView]);
+
   if (isLoading) {
     return (
       <motion.div 
@@ -97,6 +118,45 @@ export default function Gallery({ photos, isLoading, gridSize, onImageClick, fav
 
   return (
     <main className="relative z-10 w-full max-w-7xl mx-auto pb-12 space-y-12 select-none">
+      
+      {/* 🔥 NAYA: CONTINUE WATCHING ROW (NETFLIX STYLE) */}
+      {continueWatching.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
+          <h2 className="text-lg sm:text-xl font-bold text-white/90 mb-4 px-2 flex items-center gap-3">
+            <span className="w-1.5 h-6 bg-red-500 rounded-full inline-block shadow-[0_0_10px_rgba(239,68,68,0.5)]"></span>
+            Continue Watching
+          </h2>
+          
+          <div className="flex gap-4 overflow-x-auto pb-6 pt-2 px-2 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            {continueWatching.map(({ photo, data }: any) => {
+              const progressPct = data.duration > 0 ? (data.progress / data.duration) * 100 : 0;
+              
+              return (
+                <div key={`cw-${photo.id}`} className="snap-start shrink-0 h-48 sm:h-56">
+                  <GalleryItem
+                    item={photo}
+                    gridSize="medium" // Isko hamesha medium size me dikhayenge
+                    progressPercent={progressPct} // 🔥 Progress pass kiya
+                    isFav={favorites.includes(photo.id)}
+                    isSelected={selectedIds.has(photo.id)}
+                    isSelectionMode={selectedIds.size > 0}
+                    isTrashView={isTrashView}
+                    onImageClick={onImageClick}
+                    toggleSelect={toggleSelect}
+                    onToggleFavorite={onToggleFavorite}
+                    onDelete={onDelete}
+                    onRestore={onRestore}
+                    onPointerDown={() => {}}
+                    onPointerEnter={() => {}}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* REGULAR TIMELINE GRID */}
       {groupedImages.map((group, groupIndex) => (
         <motion.div 
           key={group.date || `group-${groupIndex}`} 
@@ -114,14 +174,18 @@ export default function Gallery({ photos, isLoading, gridSize, onImageClick, fav
 
           <div className="flex flex-wrap gap-3 sm:gap-4 after:content-[''] after:flex-grow-[10] after:h-0">
             {group.images.map((item, itemIndex) => {
-              // 🔥 Bulletproof Unique Key Generator
               const safeKey = item.id && item.id.trim() !== '' ? item.id : `fallback-${group.date}-${itemIndex}`;
+
+              // 🔥 Grid mein bhi progress dikhane ka logic
+              const histData = videoHistory[item.rawPath.replace(/\\/g, '/')];
+              const progressPct = histData && histData.duration > 0 ? (histData.progress / histData.duration) * 100 : undefined;
 
               return (
                 <GalleryItem
                   key={safeKey}
                   item={item}
                   gridSize={gridSize}
+                  progressPercent={progressPct} // 🔥 Progress Grid item ko bhi bheja
                   isFav={favorites.includes(item.id)}
                   isSelected={selectedIds.has(item.id)}
                   isSelectionMode={selectedIds.size > 0}

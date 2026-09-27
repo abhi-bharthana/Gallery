@@ -22,57 +22,48 @@ export default function App() {
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<LocalImage | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('time_desc'); // 🔥 NAYA: Sorting state added
+  const [sortBy, setSortBy] = useState('time_desc'); 
   const [showSplash, setShowSplash] = useState(true);
 
-  // Gallery data aur functions ko ab ek object mein liya hai taaki clean rahe
   const gallery = useGalleryData();
-
-  // Saari OS logic (F11 + Open With) ab sirf is ek line se handle ho rahi hai!
   useSystemHooks(setSelectedImage, setShowSplash);
 
-  // Optimized Filter & Sort Logic
   const displayedPhotos = useMemo(() => {
-    let base = [...gallery.allPhotos]; // 🔥 Spread operator taaki original array mutate na ho
+    let base = [...gallery.allPhotos]; 
     if (activeTab === 'Trash') return base.filter(p => gallery.trash.includes(p.id));
     
     base = base.filter(p => !gallery.trash.includes(p.id));
     if (activeTab === 'Favorites') base = base.filter(p => gallery.favorites.includes(p.id));
     
     if (activeTab === 'Albums' && selectedAlbumId) {
-      // Yahan gallery.albums use hoga taaki auto aur manual dono albums ke photos filter ho sakein
       const album = gallery.albums.find(a => a.id === selectedAlbumId);
       base = album ? base.filter(p => album.photos.includes(p.id)) : [];
     }
     
-    // Search Filter
     if (searchQuery.trim()) {
       base = base.filter(img => img.filename.toLowerCase().includes(searchQuery.toLowerCase()));
     }
 
-    // 🔥 NAYA: Sorting Logic (Time, Name, Size)
     base.sort((a, b) => {
       switch (sortBy) {
-        case 'time_asc': 
-          return a.timestamp - b.timestamp;
-        case 'time_desc': 
-          return b.timestamp - a.timestamp;
-        case 'name_asc': 
-          return a.filename.localeCompare(b.filename);
-        case 'size_desc': 
-          return (b.fileSize || 0) - (a.fileSize || 0);
-        default: 
-          return 0;
+        case 'time_asc': return a.timestamp - b.timestamp;
+        case 'time_desc': return b.timestamp - a.timestamp;
+        case 'name_asc': return a.filename.localeCompare(b.filename);
+        case 'size_desc': return (b.fileSize || 0) - (a.fileSize || 0);
+        default: return 0;
       }
     });
 
     return base;
-  }, [gallery, activeTab, selectedAlbumId, searchQuery, sortBy]);
+  }, [gallery.allPhotos, gallery.trash, gallery.favorites, gallery.albums, activeTab, selectedAlbumId, searchQuery, sortBy]);
 
-  // Viewer Close Logic
+  // 🔥 THE FIX: Viewer close hote hi history update karo taaki gallery UI turant sync ho
   const handleViewerClose = async () => {
     if (selectedImage?.id.startsWith('external-view-')) await getCurrentWindow().close();
     else setSelectedImage(null);
+    
+    // Video close hote hi Rust se naya progress fetch karo
+    gallery.fetchHistory();
   };
 
   return (
@@ -88,19 +79,22 @@ export default function App() {
 
         <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 relative z-10">
           <Navbar 
-            gridSize={gridSize} 
-            setGridSize={setGridSize} 
-            searchQuery={searchQuery} 
-            setSearchQuery={setSearchQuery} 
-            sortBy={sortBy} 
-            setSortBy={setSortBy} // 🔥 NAYA: Props passed to Navbar
+            gridSize={gridSize} setGridSize={setGridSize} 
+            searchQuery={searchQuery} setSearchQuery={setSearchQuery} 
+            sortBy={sortBy} setSortBy={setSortBy} 
           />
 
           <AnimatePresence mode="wait">
             <motion.div key={activeTab + (selectedAlbumId || '')} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="w-full h-full pb-12">
               
               {['All Photos', 'Favorites', 'Trash'].includes(activeTab) && (
-                <Gallery photos={displayedPhotos} isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} onDelete={gallery.moveToTrash} isTrashView={activeTab === 'Trash'} onRestore={gallery.restoreFromTrash} />
+                <Gallery 
+                  photos={displayedPhotos} 
+                  videoHistory={gallery.videoHistory} // 🔥 NAYA PROP PASSED
+                  isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
+                  favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
+                  onDelete={gallery.moveToTrash} isTrashView={activeTab === 'Trash'} onRestore={gallery.restoreFromTrash} 
+                />
               )}
 
               {activeTab === 'Albums' && (
@@ -110,10 +104,15 @@ export default function App() {
                       <button onClick={() => setSelectedAlbumId(null)} className="mb-8 px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-full text-sm font-semibold text-gray-300 hover:text-white transition-all shadow-lg flex items-center gap-2 group w-fit backdrop-blur-md">
                         <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Albums
                       </button>
-                      <Gallery photos={displayedPhotos} isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} onDelete={gallery.moveToTrash} isTrashView={false} onRestore={gallery.restoreFromTrash} />
+                      <Gallery 
+                        photos={displayedPhotos} 
+                        videoHistory={gallery.videoHistory} // 🔥 NAYA PROP PASSED
+                        isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
+                        favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
+                        onDelete={gallery.moveToTrash} isTrashView={false} onRestore={gallery.restoreFromTrash} 
+                      />
                     </div>
                   ) : (
-                    // Yahan dono auto aur manual dikhenge
                     <AlbumsView albums={gallery.albums} allPhotos={gallery.allPhotos} onCreateAlbum={gallery.createAlbum} onSelectAlbum={setSelectedAlbumId} />
                   )}
                 </div>
@@ -136,11 +135,8 @@ export default function App() {
                 image={selectedImage} 
                 isFavorite={gallery.favorites.includes(selectedImage.id)} 
                 isTrashed={gallery.trash.includes(selectedImage.id)} 
-                
-                // MediaViewer ko ab sirf manualAlbums pass kiye hain taaki "Add to Album" dropdown clean rahe
                 albums={gallery.manualAlbums} 
-                
-                onClose={handleViewerClose} 
+                onClose={handleViewerClose} // 🔥 Yahan pass kar diya function
                 onToggleFavorite={() => gallery.toggleFavorite(selectedImage.id)}
                 onDelete={() => {
                   gallery.moveToTrash(selectedImage.id);

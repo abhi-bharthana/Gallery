@@ -5,10 +5,25 @@ import { Star, Trash2, Check, RotateCcw, Video } from 'lucide-react';
 import Thumbnail from './Thumbnail';
 import { LocalImage } from '../../hooks/useGalleryData';
 
-// ... (interface aur baaki ka code same rahega) ...
+export interface GalleryItemProps {
+  item: LocalImage;
+  gridSize: 'small' | 'medium' | 'large';
+  isFav: boolean;
+  isSelected: boolean;
+  isSelectionMode: boolean;
+  isTrashView?: boolean;
+  progressPercent?: number; // 🔥 NAYA: Progress bar ki width ke liye
+  onImageClick: (image: LocalImage) => void;
+  toggleSelect: (id: string) => void;
+  onPointerDown: () => void;
+  onPointerEnter: () => void;
+  onToggleFavorite: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRestore?: (id: string) => void;
+}
 
 export default function GalleryItem({ 
-  item, gridSize, isFav, isSelected, isSelectionMode, isTrashView, 
+  item, gridSize, isFav, isSelected, isSelectionMode, isTrashView, progressPercent,
   onImageClick, toggleSelect, onPointerDown, onPointerEnter, 
   onToggleFavorite, onDelete, onRestore 
 }: GalleryItemProps) {
@@ -39,9 +54,8 @@ export default function GalleryItem({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* 🔥 FIX: 'div' ko 'motion.div' banaya aur layoutId lagaya 🔥 */}
       <motion.div 
-        layoutId={`media-${item.id}`} // <-- YE HAI JADOO WALI LINE
+        layoutId={`media-${item.id}`}
         onClick={(e) => {
           if (e.ctrlKey || e.metaKey || isSelectionMode) {
             e.stopPropagation();
@@ -58,7 +72,6 @@ export default function GalleryItem({
             : 'border-white/[0.04] hover:border-white/10 hover:shadow-xl'
         }`}
       >
-        {/* Uske andar ka saara code same rahega (Thumbnail, Video Title, Buttons etc) */}
         <Thumbnail image={item} gridSize={gridSize} className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
         
         {isVideo && (
@@ -80,6 +93,16 @@ export default function GalleryItem({
           </div>
         )}
 
+        {/* 🔥 NAYA: NETFLIX STYLE PROGRESS BAR 🔥 */}
+        {progressPercent !== undefined && progressPercent > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-[5px] bg-white/20 z-30 pointer-events-none">
+            <div 
+              className="h-full bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.8)] rounded-r-full transition-all duration-500" 
+              style={{ width: `${Math.min(progressPercent, 100)}%` }}
+            />
+          </div>
+        )}
+
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none"></div>
         
         {isSelected && (
@@ -88,8 +111,22 @@ export default function GalleryItem({
           </div>
         )}
 
+        {/* Action Buttons */}
         <div className={`absolute top-4 right-4 flex flex-col gap-2 transition-all duration-300 z-30 translate-y-[-10px] group-hover:translate-y-0 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-          {/* ... Action buttons ... */}
+          {!isTrashView && (
+            <button onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.id); }} className="p-2.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white/90 hover:bg-black/60 hover:scale-110 hover:text-yellow-400 transition-all active:scale-95 shadow-xl">
+              <Star size={16} className={isFav ? "fill-yellow-400 text-yellow-400" : ""} />
+            </button>
+          )}
+          {isTrashView && onRestore ? (
+            <button onClick={(e) => { e.stopPropagation(); onRestore(item.id); }} className="p-2.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-green-400 hover:bg-green-500/20 hover:scale-110 transition-all active:scale-95 shadow-xl">
+              <RotateCcw size={16} />
+            </button>
+          ) : (
+            <button onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} className="p-2.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-red-400 hover:bg-red-500/20 hover:scale-110 transition-all active:scale-95 shadow-xl">
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       </motion.div>
     </motion.div>

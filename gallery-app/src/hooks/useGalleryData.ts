@@ -36,9 +36,34 @@ export function useGalleryData() {
   const [manualAlbums, setManualAlbums] = useState<Album[]>(() => JSON.parse(localStorage.getItem('auvem_albums') || '[]'));
   const [autoAlbums, setAutoAlbums] = useState<Album[]>([]);
 
+  // 🔥 NAYA: Video History State (Progress bar aur Resume ke liye)
+  const [videoHistory, setVideoHistory] = useState<Record<string, any>>({});
+
   useEffect(() => localStorage.setItem('auvem_favs', JSON.stringify(favorites)), [favorites]);
   useEffect(() => localStorage.setItem('auvem_trash', JSON.stringify(trash)), [trash]);
   useEffect(() => localStorage.setItem('auvem_albums', JSON.stringify(manualAlbums)), [manualAlbums]);
+
+  // 🔥 NAYA: Rust backend se saari history mangwana
+  const fetchHistory = useCallback(async () => {
+    try {
+      const histArray: [string, any][] = await invoke('get_all_history');
+      const histMap: Record<string, any> = {};
+      
+      // Array ko Object(Map) mein convert kar rahe hain taaki path se direct data mil jaye
+      histArray.forEach(([path, data]) => {
+         histMap[path.replace(/\\/g, '/')] = data; // Windows/Mac paths normalize kar diye
+      });
+      
+      setVideoHistory(histMap);
+    } catch (e) {
+      console.error("History fetch error:", e);
+    }
+  }, []);
+
+  // Jaise hi hook load ho, history fetch kar lo
+  useEffect(() => { 
+    fetchHistory(); 
+  }, [fetchHistory]);
 
   // Backend se folder-albums mangwane ka function
   const fetchAutoAlbums = async () => {
@@ -166,6 +191,8 @@ export function useGalleryData() {
     trash,
     albums: [...autoAlbums, ...manualAlbums], // UI ko merge karke bhejenge
     manualAlbums, // TopBar Dropdown sirf inhe show karega
+    videoHistory, // 🔥 NAYA: History export kar di
+    fetchHistory, // 🔥 NAYA: Function export kar diya taaki close karne par refresh kar sakein
     syncImages,
     toggleFavorite,
     moveToTrash,
