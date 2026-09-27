@@ -1,7 +1,8 @@
 // src/components/Gallery/GalleryItem.tsx
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Star, Trash2, Check, RotateCcw, Video } from 'lucide-react';
+// 🔥 NAYA: 'Image as ImageIcon' import kiya taaki photos ke liye icon dikha sakein
+import { Star, Trash2, Check, RotateCcw, Video, Image as ImageIcon } from 'lucide-react'; 
 import Thumbnail from './Thumbnail';
 import { LocalImage } from '../../hooks/useGalleryData';
 
@@ -12,7 +13,7 @@ export interface GalleryItemProps {
   isSelected: boolean;
   isSelectionMode: boolean;
   isTrashView?: boolean;
-  progressPercent?: number; // 🔥 NAYA: Progress bar ki width ke liye
+  progressPercent?: number; 
   onImageClick: (image: LocalImage) => void;
   toggleSelect: (id: string) => void;
   onPointerDown: () => void;
@@ -48,9 +49,9 @@ export default function GalleryItem({
       style={{ 
         aspectRatio: `${ratio}`,
         flexGrow: ratio,
-        flexBasis: `${flexBasis}px`
+        flexBasis: `${flexBasis}px`,
       }}
-      className={`relative group shrink-0 max-w-full ${sizeClasses}`}
+      className={`relative group shrink-0 max-w-full z-10 hover:z-0 transition-all duration-300 ${sizeClasses}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -66,36 +67,41 @@ export default function GalleryItem({
         }}
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
-        className={`relative overflow-hidden cursor-pointer bg-[#121214] rounded-[1.75rem] border w-full h-full transition-all duration-300 z-10 ${
+        className={`relative cursor-pointer rounded-[1.75rem] border w-full h-full transition-all duration-300 z-10 ${
           isSelected 
-            ? 'border-purple-500 scale-[0.95] shadow-[0_0_30px_rgba(168,85,247,0.3)]' 
+            ? 'border-purple-500 scale-[0.95] shadow-[0_0_30px_rgba(168,85,247,0.3)] bg-[#121214]' 
             : 'border-white/[0.04] hover:border-white/10 hover:shadow-xl'
         }`}
       >
         <Thumbnail image={item} gridSize={gridSize} className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
         
-        {isVideo && (
-          <div className="absolute top-3 left-3 right-14 z-20 pointer-events-none">
-            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md border border-white/10 pl-3 pr-1 py-1.5 rounded-lg shadow-[0_4px_15px_rgba(0,0,0,0.6)] overflow-hidden">
+        {/* 🔥 PREMIUM TITLE PILL (Video = Always Show, Photo = Hover Only) 🔥 */}
+        <div className={`absolute bottom-4 left-4 right-16 z-20 pointer-events-none transition-all duration-400 ease-out flex ${
+          isVideo ? 'opacity-100' : 'opacity-0 translate-y-3 group-hover:opacity-100 group-hover:translate-y-0'
+        }`}>
+          {/* Box ko inline-flex aur rounded-full diya taaki exact Pill shape aaye */}
+          <div className="inline-flex items-center gap-2.5 bg-black/80 backdrop-blur-xl border border-white/10 pl-3 pr-4 py-1.5 rounded-full shadow-[0_8px_20px_rgba(0,0,0,0.8)] overflow-hidden max-w-full">
+            {isVideo ? (
               <Video size={14} className="text-purple-400 shrink-0 drop-shadow-md" />
-              
-              <div className="flex-1 overflow-hidden [mask-image:linear-gradient(to_right,black_85%,transparent_100%)]">
-                <motion.div
-                  animate={{ x: isHovered ? ["0%", "-50%"] : "0%" }}
-                  transition={{ repeat: Infinity, ease: "linear", duration: Math.max(6, item.filename.length * 0.15) }}
-                  className="flex whitespace-nowrap gap-8 w-max"
-                >
-                  <span className="text-white/95 text-xs font-semibold tracking-wide drop-shadow-md">{item.filename}</span>
-                  <span className="text-white/95 text-xs font-semibold tracking-wide drop-shadow-md">{item.filename}</span>
-                </motion.div>
-              </div>
+            ) : (
+              <ImageIcon size={14} className="text-blue-400 shrink-0 drop-shadow-md" />
+            )}
+            
+            <div className="flex-1 overflow-hidden [mask-image:linear-gradient(to_right,black_85%,transparent_100%)]">
+              <motion.div
+                animate={{ x: isHovered ? ["0%", "-50%"] : "0%" }}
+                transition={{ repeat: Infinity, ease: "linear", duration: Math.max(6, item.filename.length * 0.15) }}
+                className="flex whitespace-nowrap gap-8 w-max"
+              >
+                <span className="text-white/95 text-xs font-semibold tracking-wide drop-shadow-md">{item.filename}</span>
+                <span className="text-white/95 text-xs font-semibold tracking-wide drop-shadow-md">{item.filename}</span>
+              </motion.div>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* 🔥 NAYA: NETFLIX STYLE PROGRESS BAR 🔥 */}
         {progressPercent !== undefined && progressPercent > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-[5px] bg-white/20 z-30 pointer-events-none">
+          <div className="absolute bottom-0 left-0 right-0 h-[5px] bg-white/20 z-30 pointer-events-none overflow-hidden rounded-b-[1.75rem]">
             <div 
               className="h-full bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.8)] rounded-r-full transition-all duration-500" 
               style={{ width: `${Math.min(progressPercent, 100)}%` }}
@@ -103,7 +109,7 @@ export default function GalleryItem({
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none rounded-[1.75rem]"></div>
         
         {isSelected && (
           <div className="absolute top-4 left-4 z-30 bg-purple-500 text-white rounded-full p-1.5 shadow-lg scale-100">

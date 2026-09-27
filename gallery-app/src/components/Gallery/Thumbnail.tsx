@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+// src/components/Gallery/Thumbnail.tsx
+import { useState, useEffect, useRef } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { LocalImage } from '../../hooks/useGalleryData';
 
@@ -8,78 +9,116 @@ interface ThumbnailProps {
   className?: string;
 }
 
-const MAX_CACHE_SIZE = 500; // 🔥 FIX: Memory leak prevent karne ke liye cap
+const MAX_CACHE_SIZE = 500;
 const thumbnailCache = new Map<string, string>();
 
 export default function Thumbnail({ image, gridSize, className }: ThumbnailProps) {
-  const [thumbnailSrc, setThumbnailSrc] = useState<string>(() => {
-    return thumbnailCache.get(image.id) || '';
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(!thumbnailCache.has(image.id));
+  const imgRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [thumbnailSrc, setThumbnailSrc] = useState<string>(() => thumbnailCache.get(image.id) || '');
+  const [isFetching, setIsFetching] = useState<boolean>(!thumbnailCache.has(image.id));
+  const [isImageReady, setIsImageReady] = useState<boolean>(false);
 
   useEffect(() => {
     if (thumbnailCache.has(image.id)) {
-      setThumbnailSrc(thumbnailCache.get(image.id)!);
-      setIsLoading(false);
+      setIsVisible(true);
       return;
     }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect(); 
+        }
+      },
+      { rootMargin: '300px', threshold: 0.01 }
+    );
+    if (imgRef.current) observer.observe(imgRef.current);
+    return () => observer.disconnect();
+  }, [image.id]);
 
+  useEffect(() => {
+    if (!isVisible) return; 
+    if (thumbnailCache.has(image.id)) {
+      setThumbnailSrc(thumbnailCache.get(image.id)!);
+      setIsFetching(false);
+      return;
+    }
     let isMounted = true;
-    const size = gridSize === 'small' ? 200 : gridSize === 'medium' ? 400 : 800;
+    let isCompleted = false; 
 
-    invoke('get_thumbnail', { 
-      id: image.id, 
-      originalPath: image.rawPath, 
-      size 
-    })
+    invoke('get_thumbnail', { id: image.id, originalPath: image.rawPath, size: 500 })
       .then((path) => {
+        isCompleted = true; 
         if (isMounted && typeof path === 'string') {
           const converted = convertFileSrc(path);
-          
-          // 🔥 FIX: Cache cleaning logic
           if (thumbnailCache.size >= MAX_CACHE_SIZE) {
             const firstKey = thumbnailCache.keys().next().value;
             if (firstKey) thumbnailCache.delete(firstKey);
           }
-          
           thumbnailCache.set(image.id, converted);
           setThumbnailSrc(converted);
         }
       })
       .catch((err) => {
-        console.error("Thumbnail load failed for:", image.filename, err);
-        if (isMounted) {
+        isCompleted = true; 
+        if (isMounted && err !== "Task cancelled by frontend") {
           const fallback = convertFileSrc(image.rawPath);
           setThumbnailSrc(fallback);
         }
       })
       .finally(() => {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) setIsFetching(false);
       });
 
     return () => {
       isMounted = false;
+      if (!isCompleted) invoke('cancel_thumbnail', { id: image.id }).catch(console.error);
     };
-  }, [image.id, image.rawPath, gridSize]);
+  }, [image.id, image.rawPath, isVisible]);
 
   return (
-    <div className={`relative overflow-hidden bg-zinc-900 ${className}`}>
-      {isLoading && (
-        <div className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center">
-          <div className="w-4 h-4 border-2 border-purple-500/40 border-t-purple-500 rounded-full animate-spin"></div>
-        </div>
-      )}
-      {thumbnailSrc ? (
-        <img 
-          src={thumbnailSrc} 
-          alt={image.filename}
+    <div ref={imgRef} className="relative w-full h-full rounded-[1.75rem]">
+      
+      {/* 1. AMBIENT GLOW LAYER (FREE & UNCLIPPED) */}
+      {/* Maine isko 'rounded-full' aur '-z-10' diya hai taaki light bilkul smooth phekega aur koi square edges nahi banenge */}
+      {thumbnailSrc && (
+        <img
+          src={thumbnailSrc}
+          alt="glow"
           loading="lazy"
-          decoding="async"
-          className={`w-full h-full object-cover transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+          className={`absolute inset-0 w-full h-full object-cover rounded-full transition-opacity duration-700 ease-out pointer-events-none 
+            blur-[35px] saturate-[3] scale-[1.25] -z-10
+            ${isImageReady ? 'opacity-0 group-hover:opacity-75' : 'opacity-0'} 
+          `}
         />
-      ) : (
-        <div className="w-full h-full bg-zinc-800/50" />
       )}
+
+      {/* 2. MAIN IMAGE CONTAINER (LOCKED & CLIPPED) */}
+      {/* 🔥 THE MASTER FIX: 'overflow-hidden' sirf is layer par hai. Ab hover zoom corner nahi todega! */}
+      <div className="relative z-10 w-full h-full rounded-[1.75rem] overflow-hidden bg-[#121214]">
+        
+        {!isImageReady && (
+          <div className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center z-0">
+             <div className="w-5 h-5 border-2 border-purple-500/40 border-t-purple-500 rounded-full animate-spin"></div>
+          </div>
+        )}
+
+        {thumbnailSrc && (
+          <img
+            src={thumbnailSrc}
+            alt={image.filename}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setIsImageReady(true)} 
+            className={`w-full h-full object-cover transition-all duration-700 ease-out 
+              ${className || ''} /* Iske andar hover:scale-105 hai jo ab safely rounded box me zoom hoga */
+              ${isImageReady ? 'blur-0 opacity-100' : 'blur-md opacity-0 scale-110'}
+            `}
+          />
+        )}
+      </div>
+      
     </div>
   );
 }

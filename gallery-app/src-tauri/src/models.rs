@@ -1,7 +1,9 @@
 use serde::Serialize;
 use tokio::sync::Semaphore;
-use rusqlite::Connection;
-use std::sync::Mutex; // Thread-safe state ke liye
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use std::collections::HashMap;
+use std::sync::Mutex; // 🔥 NAYA IMPORT
 
 #[derive(Serialize)]
 pub struct MediaInfo {
@@ -13,10 +15,12 @@ pub struct MediaInfo {
     pub height: u32,
     #[serde(rename = "type")]
     pub media_type: String,
-    pub file_size: u64, // 🔥 NAYA: File size support (in bytes) add kar diya
+    pub file_size: u64, 
 }
 
 pub struct AppState {
     pub thumbnail_queue: Semaphore,
-    pub db: Mutex<Connection>, // 🔥 NAYA: Database connection state
+    pub db_pool: Pool<SqliteConnectionManager>, 
+    // 🔥 THE MASTER FIX: Active tasks ke "Kill Switches" yahan store honge
+    pub active_thumb_tasks: Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
 }

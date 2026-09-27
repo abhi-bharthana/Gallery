@@ -12,7 +12,7 @@ export interface LocalMedia {
   height: number;
   type: 'image' | 'video';
   duration?: number;
-  fileSize: number; // 🔥 ADDED: File size support
+  fileSize: number; 
 }
 export type LocalImage = LocalMedia;
 
@@ -24,7 +24,7 @@ export interface Album {
 
 const CHUNK_SIZE = 100;
 
-export function useGalleryData() {
+export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_desc') {
   const [allPhotos, setAllPhotos] = useState<LocalMedia[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -32,26 +32,22 @@ export function useGalleryData() {
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('auvem_favs') || '[]'));
   const [trash, setTrash] = useState<string[]>(() => JSON.parse(localStorage.getItem('auvem_trash') || '[]'));
   
-  // Alag state: Ek manual albums ke liye, ek auto (folder) albums ke liye
   const [manualAlbums, setManualAlbums] = useState<Album[]>(() => JSON.parse(localStorage.getItem('auvem_albums') || '[]'));
   const [autoAlbums, setAutoAlbums] = useState<Album[]>([]);
 
-  // 🔥 NAYA: Video History State (Progress bar aur Resume ke liye)
   const [videoHistory, setVideoHistory] = useState<Record<string, any>>({});
 
   useEffect(() => localStorage.setItem('auvem_favs', JSON.stringify(favorites)), [favorites]);
   useEffect(() => localStorage.setItem('auvem_trash', JSON.stringify(trash)), [trash]);
   useEffect(() => localStorage.setItem('auvem_albums', JSON.stringify(manualAlbums)), [manualAlbums]);
 
-  // 🔥 NAYA: Rust backend se saari history mangwana
   const fetchHistory = useCallback(async () => {
     try {
       const histArray: [string, any][] = await invoke('get_all_history');
       const histMap: Record<string, any> = {};
       
-      // Array ko Object(Map) mein convert kar rahe hain taaki path se direct data mil jaye
       histArray.forEach(([path, data]) => {
-         histMap[path.replace(/\\/g, '/')] = data; // Windows/Mac paths normalize kar diye
+         histMap[path.replace(/\\/g, '/')] = data; 
       });
       
       setVideoHistory(histMap);
@@ -60,12 +56,10 @@ export function useGalleryData() {
     }
   }, []);
 
-  // Jaise hi hook load ho, history fetch kar lo
   useEffect(() => { 
     fetchHistory(); 
   }, [fetchHistory]);
 
-  // Backend se folder-albums mangwane ka function
   const fetchAutoAlbums = async () => {
     try {
       const folders: Album[] = await invoke('get_auto_albums');
@@ -80,7 +74,8 @@ export function useGalleryData() {
       setIsLoading(true);
       const fileData: any[] = await invoke('get_filtered_chunk', { 
         tab: 'All Photos', 
-        search: '', 
+        search: searchQuery, 
+        sortBy: sortBy,      
         limit: CHUNK_SIZE, 
         offset 
       });
@@ -94,13 +89,13 @@ export function useGalleryData() {
         width: img.width || 800,  
         height: img.height || 800,
         type: img.media_type || 'image',
-        fileSize: img.file_size || 0, // 🔥 ADDED: Size mapping from DB
+        // 🔥 FIX: Rust bhejta hai file_size (snake_case mein frontend pe aata hai ya camel mein? Generally Rust struct as-is serialized hota hai)
+        fileSize: img.file_size || img.fileSize || 0, 
       }));
       
       setAllPhotos((prev) => append ? [...prev, ...loaded] : loaded);
       setHasMore(fileData.length === CHUNK_SIZE);
 
-      // Jab DB load ho tabhi folders bhi update kar lo
       if (!append) fetchAutoAlbums();
 
     } catch (error) {
@@ -108,13 +103,16 @@ export function useGalleryData() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [searchQuery, sortBy]); 
 
+  // 🔥 THE MASTER FIX: Sync Logic Re-Written 
+  // Ye directly Rust ko scan karne bolega and await karega, fir fetch start karega
   const syncImages = useCallback(async () => {
     setIsLoading(true);
     try {
       const saved = localStorage.getItem('synced_folders');
       const directories = saved ? JSON.parse(saved) : [];
+      
       if (directories.length === 0) {
         setAllPhotos([]);
         setIsLoading(false);
@@ -122,7 +120,10 @@ export function useGalleryData() {
         return;
       }
       
+      // Rust backend ko command do foldero ko scan and sync karne ka DB me
       await invoke('fetch_synced_images', { directories });
+      
+      // Fir newly fresh DB se pehla chunk manga lo
       await loadFromDatabase(false, 0);
     } catch (error) {
       console.error('Scan Error:', error);
@@ -131,17 +132,22 @@ export function useGalleryData() {
     }
   }, [loadFromDatabase]);
 
+  // Debounce for search and sort changes ONLY
   useEffect(() => {
     const saved = localStorage.getItem('synced_folders');
     const directories = saved ? JSON.parse(saved) : [];
     
     if (directories.length > 0) {
-      loadFromDatabase(false, 0);
+      const delayDebounceFn = setTimeout(() => {
+        loadFromDatabase(false, 0);
+      }, 300);
+
+      return () => clearTimeout(delayDebounceFn);
     } else {
       setIsLoading(false);
       setHasMore(false);
     }
-  }, [loadFromDatabase]);
+  }, [loadFromDatabase]); // Removed syncImages from this useEffect
 
   const loadMore = useCallback(async () => {
     if (isLoading || !hasMore) return;
@@ -170,7 +176,6 @@ export function useGalleryData() {
   };
 
   const addToAlbum = (photoId: string, albumId: string) => {
-    // Auto albums mein manual add allow nahi karenge kyunki wo folder based hain
     if (albumId.startsWith('auto-album-')) return;
     
     setManualAlbums((prev) =>
@@ -189,10 +194,10 @@ export function useGalleryData() {
     loadMore, 
     favorites,
     trash,
-    albums: [...autoAlbums, ...manualAlbums], // UI ko merge karke bhejenge
-    manualAlbums, // TopBar Dropdown sirf inhe show karega
-    videoHistory, // 🔥 NAYA: History export kar di
-    fetchHistory, // 🔥 NAYA: Function export kar diya taaki close karne par refresh kar sakein
+    albums: [...autoAlbums, ...manualAlbums],
+    manualAlbums,
+    videoHistory,
+    fetchHistory,
     syncImages,
     toggleFavorite,
     moveToTrash,

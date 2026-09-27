@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react'; // 🔥 FIX: useEffect import kiya
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -25,44 +25,38 @@ export default function App() {
   const [sortBy, setSortBy] = useState('time_desc'); 
   const [showSplash, setShowSplash] = useState(true);
 
-  const gallery = useGalleryData();
+  // 🔥 DB-delegated search & sorting hook
+  const gallery = useGalleryData(searchQuery, sortBy);
   useSystemHooks(setSelectedImage, setShowSplash);
 
+  // 🔥 THE MASTER FIX: Silent Auto-Sync on Startup 🔥
+  // App khulte hi background mein naye folders scan karega, bina screen lag kiye!
+  useEffect(() => {
+    gallery.syncImages();
+  }, []); // [] ka matlab hai sirf ek baar chalega jab app open hogi
+
+  // 🔥 Memoized filtering so switching tabs never triggers timeline lag
   const displayedPhotos = useMemo(() => {
     let base = [...gallery.allPhotos]; 
+    
     if (activeTab === 'Trash') return base.filter(p => gallery.trash.includes(p.id));
     
     base = base.filter(p => !gallery.trash.includes(p.id));
+    
     if (activeTab === 'Favorites') base = base.filter(p => gallery.favorites.includes(p.id));
     
     if (activeTab === 'Albums' && selectedAlbumId) {
       const album = gallery.albums.find(a => a.id === selectedAlbumId);
       base = album ? base.filter(p => album.photos.includes(p.id)) : [];
     }
-    
-    if (searchQuery.trim()) {
-      base = base.filter(img => img.filename.toLowerCase().includes(searchQuery.toLowerCase()));
-    }
-
-    base.sort((a, b) => {
-      switch (sortBy) {
-        case 'time_asc': return a.timestamp - b.timestamp;
-        case 'time_desc': return b.timestamp - a.timestamp;
-        case 'name_asc': return a.filename.localeCompare(b.filename);
-        case 'size_desc': return (b.fileSize || 0) - (a.fileSize || 0);
-        default: return 0;
-      }
-    });
 
     return base;
-  }, [gallery.allPhotos, gallery.trash, gallery.favorites, gallery.albums, activeTab, selectedAlbumId, searchQuery, sortBy]);
+  }, [gallery.allPhotos, gallery.trash, gallery.favorites, gallery.albums, activeTab, selectedAlbumId]);
 
-  // 🔥 THE FIX: Viewer close hote hi history update karo taaki gallery UI turant sync ho
   const handleViewerClose = async () => {
     if (selectedImage?.id.startsWith('external-view-')) await getCurrentWindow().close();
     else setSelectedImage(null);
     
-    // Video close hote hi Rust se naya progress fetch karo
     gallery.fetchHistory();
   };
 
@@ -71,11 +65,14 @@ export default function App() {
       <AnimatePresence>{showSplash && <SplashScreen />}</AnimatePresence>
 
       <div className="fixed inset-0 w-full h-full bg-[#0a0a0c] text-white flex overflow-hidden">
-        <Sidebar activeTab={activeTab} setActiveTab={(tab) => {
-          setActiveTab(tab); 
-          setSelectedAlbumId(null);
-          if (tab === 'All Photos') gallery.syncImages();
-        }} />
+        {/* 🔥 Removed forced gallery.syncImages() on tab click */}
+        <Sidebar 
+          activeTab={activeTab} 
+          setActiveTab={(tab) => {
+            setActiveTab(tab); 
+            setSelectedAlbumId(null);
+          }} 
+        />
 
         <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 relative z-10">
           <Navbar 
@@ -90,7 +87,7 @@ export default function App() {
               {['All Photos', 'Favorites', 'Trash'].includes(activeTab) && (
                 <Gallery 
                   photos={displayedPhotos} 
-                  videoHistory={gallery.videoHistory} // 🔥 NAYA PROP PASSED
+                  videoHistory={gallery.videoHistory}
                   isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
                   favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                   onDelete={gallery.moveToTrash} isTrashView={activeTab === 'Trash'} onRestore={gallery.restoreFromTrash} 
@@ -106,7 +103,7 @@ export default function App() {
                       </button>
                       <Gallery 
                         photos={displayedPhotos} 
-                        videoHistory={gallery.videoHistory} // 🔥 NAYA PROP PASSED
+                        videoHistory={gallery.videoHistory}
                         isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
                         favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                         onDelete={gallery.moveToTrash} isTrashView={false} onRestore={gallery.restoreFromTrash} 
@@ -136,7 +133,7 @@ export default function App() {
                 isFavorite={gallery.favorites.includes(selectedImage.id)} 
                 isTrashed={gallery.trash.includes(selectedImage.id)} 
                 albums={gallery.manualAlbums} 
-                onClose={handleViewerClose} // 🔥 Yahan pass kar diya function
+                onClose={handleViewerClose}
                 onToggleFavorite={() => gallery.toggleFavorite(selectedImage.id)}
                 onDelete={() => {
                   gallery.moveToTrash(selectedImage.id);

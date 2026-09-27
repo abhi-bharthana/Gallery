@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Manager;
+use tauri::State;
+use crate::models::AppState;
 use crate::media::clean_video_path;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -14,51 +13,84 @@ pub struct VideoHistory {
     pub last_watched_at: u64,
 }
 
-fn get_history_path(app: &tauri::AppHandle) -> std::path::PathBuf {
-    app.path().app_data_dir().unwrap().join("history.json")
-}
-
-fn read_history(app: &tauri::AppHandle) -> HashMap<String, VideoHistory> {
-    let path = get_history_path(app);
-    if let Ok(content) = fs::read_to_string(path) {
-        serde_json::from_str(&content).unwrap_or_default()
-    } else {
-        HashMap::new()
-    }
-}
-
-fn write_history(app: &tauri::AppHandle, history: &HashMap<String, VideoHistory>) {
-    let path = get_history_path(app);
-    if let Ok(content) = serde_json::to_string_pretty(history) {
-        let _ = fs::write(path, content);
-    }
-}
-
 #[tauri::command]
 pub async fn save_video_history(
-    app: tauri::AppHandle, video_path: String, progress: f64, duration: f64, audio_lang: String, sub_lang: String,
+    state: State<'_, AppState>, 
+    video_path: String, 
+    progress: f64, 
+    duration: f64, 
+    audio_lang: String, 
+    sub_lang: String,
 ) -> Result<(), String> {
     let real_path = clean_video_path(&video_path);
-    let mut history = read_history(&app);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    
+    // Pool se lock-free connection lo
+    let conn = state.db_pool.get().map_err(|e| e.to_string())?;
+    
+    conn.execute(
+        "INSERT INTO video_history (video_path, progress, duration, audio_lang, sub_lang, last_watched_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(video_path) DO UPDATE SET
+            progress = excluded.progress,
+            duration = excluded.duration,
+            audio_lang = excluded.audio_lang,
+            sub_lang = excluded.sub_lang,
+            last_watched_at = excluded.last_watched_at",
+        rusqlite::params![real_path, progress, duration, audio_lang, sub_lang, now as i64],
+    ).map_err(|e| format!("History save error: {}", e))?;
 
-    history.insert(real_path, VideoHistory { progress, duration, audio_lang, sub_lang, last_watched_at: now });
-    write_history(&app, &history);
-    println!("💾 [HISTORY SAVED] Progress: {}s for {:?}", progress, video_path);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_video_history(app: tauri::AppHandle, video_path: String) -> Result<Option<VideoHistory>, String> {
+pub async fn get_video_history(state: State<'_, AppState>, video_path: String) -> Result<Option<VideoHistory>, String> {
     let real_path = clean_video_path(&video_path);
-    let history = read_history(&app);
-    Ok(history.get(&real_path).cloned())
+    let conn = state.db_pool.get().map_err(|e| e.to_string())?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT progress, duration, audio_lang, sub_lang, last_watched_at 
+         FROM video_history WHERE video_path = ?1"
+    ).map_err(|e| e.to_string())?;
+    
+    let history = stmt.query_row([real_path], |row| {
+        Ok(VideoHistory {
+            progress: row.get(0)?,
+            duration: row.get(1)?,
+            audio_lang: row.get(2)?,
+            sub_lang: row.get(3)?,
+            last_watched_at: row.get::<_, i64>(4)? as u64,
+        })
+    }).ok();
+
+    Ok(history)
 }
 
 #[tauri::command]
-pub async fn get_all_history(app: tauri::AppHandle) -> Result<Vec<(String, VideoHistory)>, String> {
-    let history = read_history(&app);
-    let mut vec: Vec<_> = history.into_iter().collect();
-    vec.sort_by(|a, b| b.1.last_watched_at.cmp(&a.1.last_watched_at));
+pub async fn get_all_history(state: State<'_, AppState>) -> Result<Vec<(String, VideoHistory)>, String> {
+    let conn = state.db_pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT video_path, progress, duration, audio_lang, sub_lang, last_watched_at 
+         FROM video_history ORDER BY last_watched_at DESC LIMIT 50"
+    ).map_err(|e| e.to_string())?;
+    
+    let iter = stmt.query_map([], |row| {
+        let path: String = row.get(0)?;
+        let hist = VideoHistory {
+            progress: row.get(1)?,
+            duration: row.get(2)?,
+            audio_lang: row.get(3)?,
+            sub_lang: row.get(4)?,
+            last_watched_at: row.get::<_, i64>(5)? as u64,
+        };
+        Ok((path, hist))
+    }).map_err(|e| e.to_string())?;
+
+    let mut vec = Vec::new();
+    for item in iter {
+        if let Ok(record) = item {
+            vec.push(record);
+        }
+    }
     Ok(vec)
 }
