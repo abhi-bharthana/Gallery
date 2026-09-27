@@ -1,4 +1,3 @@
-// src/components/Gallery/Thumbnail.tsx
 import { useState, useEffect } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { LocalImage } from '../../hooks/useGalleryData';
@@ -9,7 +8,7 @@ interface ThumbnailProps {
   className?: string;
 }
 
-// 🛡️ Global cache map taaki scroll karne par dobara fetch na karna pade
+const MAX_CACHE_SIZE = 500; // 🔥 FIX: Memory leak prevent karne ke liye cap
 const thumbnailCache = new Map<string, string>();
 
 export default function Thumbnail({ image, gridSize, className }: ThumbnailProps) {
@@ -36,13 +35,19 @@ export default function Thumbnail({ image, gridSize, className }: ThumbnailProps
       .then((path) => {
         if (isMounted && typeof path === 'string') {
           const converted = convertFileSrc(path);
+          
+          // 🔥 FIX: Cache cleaning logic
+          if (thumbnailCache.size >= MAX_CACHE_SIZE) {
+            const firstKey = thumbnailCache.keys().next().value;
+            if (firstKey) thumbnailCache.delete(firstKey);
+          }
+          
           thumbnailCache.set(image.id, converted);
           setThumbnailSrc(converted);
         }
       })
       .catch((err) => {
         console.error("Thumbnail load failed for:", image.filename, err);
-        // Fallback to original path agar thumbnail fail ho jaye toh app crash na ho
         if (isMounted) {
           const fallback = convertFileSrc(image.rawPath);
           setThumbnailSrc(fallback);

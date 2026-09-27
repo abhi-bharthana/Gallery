@@ -4,6 +4,16 @@ use crate::thumbnail::generate_thumbnail;
 use crate::db;
 use std::env;
 use tauri::State;
+use std::path::Path; // 🔥 NAYA IMPORT: Folder path nikalne ke liye
+use std::collections::HashMap; // 🔥 NAYA IMPORT: Folders ko group karne ke liye
+
+// 🔥 AutoAlbum ka structure
+#[derive(serde::Serialize)]
+pub struct AutoAlbum {
+    pub id: String,
+    pub name: String,
+    pub photos: Vec<String>,
+}
 
 // 🔥 Background mein scan karke SQLite mein daal dega
 #[tauri::command]
@@ -12,8 +22,9 @@ pub async fn fetch_synced_images(directories: Vec<String>, state: State<'_, AppS
         scan_directories(directories)
     }).await.map_err(|e| e.to_string())?;
 
-    let conn = state.db.lock().unwrap();
-    db::insert_media(&conn, media_list).map_err(|e| e.to_string())?;
+    // 🔥 FIX: 'conn' ko mut banaya
+    let mut conn = state.db.lock().unwrap();
+    db::insert_media(&mut conn, media_list).map_err(|e| e.to_string())?;
     
     Ok("Sync Complete".to_string())
 }
@@ -50,4 +61,45 @@ pub async fn get_thumbnail(id: String, original_path: String, size: u32, state: 
 pub fn get_opened_file() -> Option<String> {
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && !args[1].starts_with("--") { Some(args[1].clone()) } else { None }
+}
+
+// 🔥 NAYA COMMAND: Automatically folders ko albums banayega
+#[tauri::command]
+pub fn get_auto_albums(state: tauri::State<'_, AppState>) -> Result<Vec<AutoAlbum>, String> {
+    let conn = state.db.lock().unwrap();
+    // Database se sabhi images/videos ke id aur path (url) uthao
+    let mut stmt = conn.prepare("SELECT id, url FROM media").map_err(|e| e.to_string())?;
+
+    let media_iter = stmt.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let url: String = row.get(1)?;
+        Ok((id, url))
+    }).map_err(|e| e.to_string())?;
+
+    let mut folder_map: HashMap<String, Vec<String>> = HashMap::new();
+
+    // Har file ka parent folder nikal kar group karo
+    for item in media_iter {
+        if let Ok((id, url)) = item {
+            if let Some(parent) = Path::new(&url).parent() {
+                if let Some(folder_name) = parent.file_name().and_then(|n| n.to_str()) {
+                    folder_map.entry(folder_name.to_string()).or_insert_with(Vec::new).push(id);
+                }
+            }
+        }
+    }
+
+    let mut albums = Vec::new();
+    for (name, photos) in folder_map {
+        albums.push(AutoAlbum {
+            id: format!("auto-album-{}", name), // ID mein prefix taaki manual albums se mix na ho
+            name,
+            photos,
+        });
+    }
+
+    // Albums ko A-Z sort kar do
+    albums.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(albums)
 }

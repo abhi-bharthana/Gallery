@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 
-export interface LocalMedia { 
+export interface LocalMedia {
   id: string;
   url: string;
   rawPath: string;
@@ -10,10 +10,10 @@ export interface LocalMedia {
   filename: string;
   width: number;
   height: number;
-  type: 'image' | 'video'; 
-  duration?: number;       
+  type: 'image' | 'video';
+  duration?: number;
+  fileSize: number; // 🔥 ADDED: File size support
 }
-
 export type LocalImage = LocalMedia;
 
 export interface Album {
@@ -28,16 +28,28 @@ export function useGalleryData() {
   const [allPhotos, setAllPhotos] = useState<LocalMedia[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
-
+  
   const [favorites, setFavorites] = useState<string[]>(() => JSON.parse(localStorage.getItem('auvem_favs') || '[]'));
   const [trash, setTrash] = useState<string[]>(() => JSON.parse(localStorage.getItem('auvem_trash') || '[]'));
-  const [albums, setAlbums] = useState<Album[]>(() => JSON.parse(localStorage.getItem('auvem_albums') || '[]'));
+  
+  // Alag state: Ek manual albums ke liye, ek auto (folder) albums ke liye
+  const [manualAlbums, setManualAlbums] = useState<Album[]>(() => JSON.parse(localStorage.getItem('auvem_albums') || '[]'));
+  const [autoAlbums, setAutoAlbums] = useState<Album[]>([]);
 
   useEffect(() => localStorage.setItem('auvem_favs', JSON.stringify(favorites)), [favorites]);
   useEffect(() => localStorage.setItem('auvem_trash', JSON.stringify(trash)), [trash]);
-  useEffect(() => localStorage.setItem('auvem_albums', JSON.stringify(albums)), [albums]);
+  useEffect(() => localStorage.setItem('auvem_albums', JSON.stringify(manualAlbums)), [manualAlbums]);
 
-  // 🔥 1. LIGHTNING FAST STARTUP: Sirf SQLite Database se data lao (No Disk Scan on Refresh!)
+  // Backend se folder-albums mangwane ka function
+  const fetchAutoAlbums = async () => {
+    try {
+      const folders: Album[] = await invoke('get_auto_albums');
+      setAutoAlbums(folders);
+    } catch (e) {
+      console.error("Auto albums fetch failed", e);
+    }
+  };
+
   const loadFromDatabase = useCallback(async (append: boolean = false, offset: number = 0) => {
     try {
       setIsLoading(true);
@@ -47,8 +59,8 @@ export function useGalleryData() {
         limit: CHUNK_SIZE, 
         offset 
       });
-
-      const loaded: LocalMedia[] = fileData.map((img, index) => ({
+      
+      const loaded: LocalMedia[] = fileData.map((img: any, index: number) => ({
         id: img.id && img.id.trim() !== '' ? img.id : `media-${offset + index}-${Date.now()}`,
         url: convertFileSrc(img.url),
         rawPath: img.url, 
@@ -57,10 +69,14 @@ export function useGalleryData() {
         width: img.width || 800,  
         height: img.height || 800,
         type: img.media_type || 'image',
+        fileSize: img.file_size || 0, // 🔥 ADDED: Size mapping from DB
       }));
       
       setAllPhotos((prev) => append ? [...prev, ...loaded] : loaded);
       setHasMore(fileData.length === CHUNK_SIZE);
+
+      // Jab DB load ho tabhi folders bhi update kar lo
+      if (!append) fetchAutoAlbums();
 
     } catch (error) {
       console.error('Database Load Error:', error);
@@ -69,7 +85,6 @@ export function useGalleryData() {
     }
   }, []);
 
-  // 🔥 2. MANUAL SYNC: Disk scan sirf tab chalega jab user explicitly boléga
   const syncImages = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -81,13 +96,9 @@ export function useGalleryData() {
         setHasMore(false);
         return;
       }
-
-      // Disk scan and DB re-index
-      await invoke('fetch_synced_images', { directories });
       
-      // Scan ke baad fresh data load karo
+      await invoke('fetch_synced_images', { directories });
       await loadFromDatabase(false, 0);
-
     } catch (error) {
       console.error('Scan Error:', error);
     } finally {
@@ -95,20 +106,18 @@ export function useGalleryData() {
     }
   }, [loadFromDatabase]);
 
-  // 🔥 App khulte hi bina disk scan kiye seedha DB se load karega (Instant Boot)
   useEffect(() => {
     const saved = localStorage.getItem('synced_folders');
     const directories = saved ? JSON.parse(saved) : [];
     
     if (directories.length > 0) {
-      loadFromDatabase(false, 0); // Instant load from cache
+      loadFromDatabase(false, 0);
     } else {
       setIsLoading(false);
       setHasMore(false);
     }
   }, [loadFromDatabase]);
 
-  // 🔥 Infinite Scroll (Load More)
   const loadMore = useCallback(async () => {
     if (isLoading || !hasMore) return;
     await loadFromDatabase(true, allPhotos.length);
@@ -131,12 +140,15 @@ export function useGalleryData() {
     const albumName = prompt('Enter new album name:');
     if (albumName && albumName.trim() !== '') {
       const newAlbum: Album = { id: Date.now().toString(), name: albumName.trim(), photos: [] };
-      setAlbums((prev) => [...prev, newAlbum]);
+      setManualAlbums((prev) => [...prev, newAlbum]);
     }
   };
 
   const addToAlbum = (photoId: string, albumId: string) => {
-    setAlbums((prev) =>
+    // Auto albums mein manual add allow nahi karenge kyunki wo folder based hain
+    if (albumId.startsWith('auto-album-')) return;
+    
+    setManualAlbums((prev) =>
       prev.map((album) =>
         album.id === albumId && !album.photos.includes(photoId)
           ? { ...album, photos: [...album.photos, photoId] }
@@ -152,8 +164,9 @@ export function useGalleryData() {
     loadMore, 
     favorites,
     trash,
-    albums,
-    syncImages, // Ye ab sirf manual sync ke liye use hoga
+    albums: [...autoAlbums, ...manualAlbums], // UI ko merge karke bhejenge
+    manualAlbums, // TopBar Dropdown sirf inhe show karega
+    syncImages,
     toggleFavorite,
     moveToTrash,
     restoreFromTrash,

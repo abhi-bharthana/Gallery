@@ -1,5 +1,5 @@
-// components/Navbar.tsx
-import { Search, Grid, LayoutGrid, Maximize, X } from 'lucide-react';
+// src/components/Navbar.tsx
+import { Search, Grid, LayoutGrid, Maximize, X, ArrowDownWideNarrow } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface NavbarProps {
@@ -7,11 +7,14 @@ interface NavbarProps {
   setGridSize: (size: 'small' | 'medium' | 'large') => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  sortBy: string;
+  setSortBy: (sort: string) => void;
 }
 
-export default function Navbar({ gridSize, setGridSize, searchQuery, setSearchQuery }: NavbarProps) {
+export default function Navbar({ gridSize, setGridSize, searchQuery, setSearchQuery, sortBy, setSortBy }: NavbarProps) {
   return (
     <nav className="relative z-10 w-full max-w-7xl mx-auto flex justify-between items-center mb-8 gap-4 px-2">
+      {/* Search Bar */}
       <div className="flex-1 max-w-md flex items-center gap-3 bg-[#121214] border border-white/[0.05] px-4 py-2 rounded-full shadow-lg transition-all duration-300 focus-within:border-purple-500/50 focus-within:shadow-[0_0_20px_rgba(168,85,247,0.15)] group">
         <Search size={18} className="text-gray-500 group-focus-within:text-purple-400 transition-colors" />
         <input
@@ -28,7 +31,23 @@ export default function Navbar({ gridSize, setGridSize, searchQuery, setSearchQu
         )}
       </div>
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-4">
+        {/* 🔥 Sorting Dropdown */}
+        <div className="flex items-center bg-[#121214] border border-white/[0.05] px-4 py-2 rounded-full shadow-lg hover:border-white/10 transition-all group">
+          <ArrowDownWideNarrow size={16} className="text-gray-400 mr-2 group-hover:text-purple-400 transition-colors" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="bg-transparent text-sm text-gray-200 outline-none cursor-pointer appearance-none pr-2 font-medium"
+          >
+            <option value="time_desc" className="bg-[#121214] text-gray-200">Newest First</option>
+            <option value="time_asc" className="bg-[#121214] text-gray-200">Oldest First</option>
+            <option value="name_asc" className="bg-[#121214] text-gray-200">Name (A-Z)</option>
+            <option value="size_desc" className="bg-[#121214] text-gray-200">Size (Largest)</option>
+          </select>
+        </div>
+
+        {/* Grid Size Switcher */}
         <div className="flex items-center bg-[#121214] border border-white/[0.05] p-1 rounded-full shadow-lg">
           {(['small', 'medium', 'large'] as const).map((size) => {
             const Icon = size === 'small' ? Grid : size === 'medium' ? LayoutGrid : Maximize;

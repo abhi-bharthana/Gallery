@@ -13,6 +13,7 @@ pub struct MediaInfo {
     pub height: u32,
     #[serde(rename = "type")]
     pub media_type: String,
+    pub file_size: u64, // 🔥 NAYA: File size support (in bytes) add kar diya
 }
 
 pub struct AppState {

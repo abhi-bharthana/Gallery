@@ -2,62 +2,68 @@ use rusqlite::{params, Connection, Result};
 use crate::models::MediaInfo;
 use std::path::PathBuf;
 
-// 🔥 1. Database Initialization
 pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS media (
+    conn.execute_batch("
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+        PRAGMA temp_store = MEMORY;
+        
+        CREATE TABLE IF NOT EXISTS media (
             id TEXT PRIMARY KEY,
             url TEXT UNIQUE,
             timestamp INTEGER,
             filename TEXT,
             width INTEGER,
             height INTEGER,
-            media_type TEXT
-        )",
-        [],
-    )?;
+            media_type TEXT,
+            file_size INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_media_timestamp ON media(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_media_filename ON media(filename);
+    ")?;
     Ok(conn)
 }
 
-// 🔥 2. Fast Bulk Insert
-// 🔥 Fast Bulk Insert & Auto-Cleanup of Removed Folders
-pub fn insert_media(conn: &Connection, media_list: Vec<MediaInfo>) -> Result<()> {
-    // 1. Purana sara data uda do taaki jo folder delete ho chuke hain, wo DB mein na bachein
-    conn.execute("DELETE FROM media", [])?;
+pub fn insert_media(conn: &mut Connection, media_list: Vec<MediaInfo>) -> Result<()> {
+    let tx = conn.transaction()?;
+    {
+        let mut stmt = tx.prepare_cached(
+            "INSERT INTO media (id, url, timestamp, filename, width, height, media_type, file_size)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                timestamp = excluded.timestamp,
+                filename = excluded.filename,
+                file_size = excluded.file_size"
+        )?;
 
-    // 2. Naya fresh data insert karo
-    let mut stmt = conn.prepare(
-        "INSERT OR IGNORE INTO media (id, url, timestamp, filename, width, height, media_type)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
-    )?;
-    
-    for media in media_list {
-        stmt.execute(params![
-            media.id,
-            media.url,
-            media.timestamp as i64,
-            media.filename,
-            media.width,
-            media.height,
-            media.media_type
-        ])?;
+        for media in &media_list {
+            stmt.execute(params![
+                media.id,
+                media.url,
+                media.timestamp as i64,
+                media.filename,
+                media.width,
+                media.height,
+                media.media_type,
+                media.file_size as i64 // 🔥 FIX: i64 cast
+            ])?;
+        }
     }
+    tx.commit()?;
     Ok(())
 }
 
-// 🔥 3. Filtered & Paginated Media Fetch
 pub fn get_filtered_media(
     conn: &Connection, 
-    _tab: &str, // Prefix with underscore to prevent unused variable warning
+    _tab: &str, 
     search: &str, 
     limit: u32, 
     offset: u32
 ) -> Result<Vec<MediaInfo>> {
-    let mut query = String::from("SELECT id, url, timestamp, filename, width, height, media_type FROM media WHERE 1=1");
+    let mut query = String::from("SELECT id, url, timestamp, filename, width, height, media_type, file_size FROM media WHERE 1=1");
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-    // 1. Search Query Filter
     if !search.is_empty() {
         query.push_str(" AND filename LIKE ?");
         params_vec.push(Box::new(format!("%{}%", search)));
@@ -72,6 +78,7 @@ pub fn get_filtered_media(
 
     let media_iter = stmt.query_map(&params_refs[..], |row| {
         let ts: i64 = row.get(2)?;
+        let f_size: i64 = row.get(7).unwrap_or(0); // 🔥 FIX: i64 read
         Ok(MediaInfo {
             id: row.get(0)?,
             url: row.get(1)?,
@@ -80,6 +87,7 @@ pub fn get_filtered_media(
             width: row.get(4)?,
             height: row.get(5)?,
             media_type: row.get(6)?,
+            file_size: f_size as u64, // 🔥 FIX: u64 cast
         })
     })?;
 

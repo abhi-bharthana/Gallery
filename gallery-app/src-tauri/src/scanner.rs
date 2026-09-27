@@ -1,9 +1,9 @@
 use crate::models::MediaInfo;
-use std::collections::hash_map::DefaultHasher;
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
+use std::hash::Hasher;
+use twox_hash::XxHash64;
 
 pub fn scan_directories(directories: Vec<String>) -> Vec<MediaInfo> {
     let mut media_list = Vec::new();
@@ -22,7 +22,10 @@ pub fn scan_directories(directories: Vec<String>) -> Vec<MediaInfo> {
 
                 if is_image || is_video {
                     let mut timestamp = 0;
+                    let mut file_size = 0; // 🔥 FIX: SIZE KA VARIABLE ADD KIYA
+
                     if let Ok(metadata) = fs::metadata(&path) {
+                        file_size = metadata.len(); // 🔥 FIX: FILE SIZE BYTES MEIN EXTRACT KIYA
                         if let Ok(modified) = metadata.modified() {
                             if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
                                 timestamp = duration.as_secs();
@@ -30,21 +33,18 @@ pub fn scan_directories(directories: Vec<String>) -> Vec<MediaInfo> {
                         }
                     }
 
-                    // Videos ke liye default 1920x1080 rakha hai taaki heavy ffprobe scan bach sake
-                    let (width, height) = if is_image {
-                        image::image_dimensions(&path).unwrap_or((800, 800))
-                    } else {
-                        (1920, 1080)
-                    };
-
+                    // 🔥 FIX: Disk IO bachane ke liye dimensions yahan extract nahi karenge.
+                    let width = 0;
+                    let height = 0;
                     let media_type = if is_video { "video".to_string() } else { "image".to_string() };
 
                     if let Some(path_str) = path.to_str() {
                         let normalized_path = path_str.replace("\\", "/");
                         let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
 
-                        let mut hasher = DefaultHasher::new();
-                        normalized_path.hash(&mut hasher);
+                        // 🔥 FIX: Hamesha same file ke liye same ID banegi
+                        let mut hasher = XxHash64::default();
+                        hasher.write(normalized_path.as_bytes());
                         let id = format!("{:016x}", hasher.finish());
 
                         media_list.push(MediaInfo {
@@ -55,6 +55,7 @@ pub fn scan_directories(directories: Vec<String>) -> Vec<MediaInfo> {
                             width,
                             height,
                             media_type,
+                            file_size, // 🔥 FIX: PUSH MEIN ADD KIYA
                         });
                     }
                 }
