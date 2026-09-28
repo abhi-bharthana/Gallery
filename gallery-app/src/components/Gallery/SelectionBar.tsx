@@ -1,15 +1,16 @@
 // src/components/Gallery/SelectionBar.tsx
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, X, RotateCcw } from 'lucide-react';
+import { Trash2, X, RotateCcw, ShieldCheck } from 'lucide-react'; // 🔥 ShieldCheck import kiya
 
 interface SelectionBarProps {
   selectedCount: number;
   isTrashView?: boolean;
   onBulkAction: () => void;
   onCancel: () => void;
+  onLockToVault?: () => void; // 🔥 NAYA PROP: Lock action ke liye
 }
 
-export default function SelectionBar({ selectedCount, isTrashView, onBulkAction, onCancel }: SelectionBarProps) {
+export default function SelectionBar({ selectedCount, isTrashView, onBulkAction, onCancel, onLockToVault }: SelectionBarProps) {
   return (
     <AnimatePresence>
       {selectedCount > 0 && (
@@ -44,6 +45,16 @@ export default function SelectionBar({ selectedCount, isTrashView, onBulkAction,
             transition={{ delay: 0.15, duration: 0.3 }}
             className="flex items-center gap-4"
           >
+            {/* 🔥 NAYA: Lock to Vault Button */}
+            {!isTrashView && onLockToVault && (
+              <button 
+                onClick={onLockToVault} 
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all text-purple-400 hover:text-purple-300 hover:bg-purple-400/10"
+              >
+                <ShieldCheck size={15} /> Lock
+              </button>
+            )}
+
             <button 
               onClick={onBulkAction} 
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${

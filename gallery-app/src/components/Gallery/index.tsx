@@ -8,7 +8,7 @@ import SelectionBar from './SelectionBar';
 
 export interface GalleryProps {
   photos: LocalImage[];
-  videoHistory?: Record<string, any>; // 🔥 NAYA: History prop add kiya
+  videoHistory?: Record<string, any>; 
   isLoading: boolean;
   gridSize: 'small' | 'medium' | 'large';
   onImageClick: (image: LocalImage) => void;
@@ -17,9 +17,10 @@ export interface GalleryProps {
   onDelete: (id: string) => void;
   isTrashView?: boolean; 
   onRestore?: (id: string) => void; 
+  onLockToVault?: (ids: string[]) => void; // 🔥 NAYA PROP
 }
 
-export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize, onImageClick, favorites, onToggleFavorite, onDelete, isTrashView, onRestore }: GalleryProps) {
+export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize, onImageClick, favorites, onToggleFavorite, onDelete, isTrashView, onRestore, onLockToVault }: GalleryProps) {
   const [displayCount, setDisplayCount] = useState(50);
   const observerTarget = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -72,24 +73,22 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
     return Object.entries(groups).map(([date, imgs]) => ({ date, images: imgs }));
   }, [visiblePhotos]);
 
-  // 🔥 THE MAGIC: Continue Watching list nikalne ka logic
   const continueWatching = useMemo(() => {
     if (isTrashView || !photos.length || Object.keys(videoHistory).length === 0) return [];
     
     return Object.entries(videoHistory)
-      .sort((a, b) => b[1].last_watched_at - a[1].last_watched_at) // Sabse recent pehle
+      .sort((a, b) => b[1].last_watched_at - a[1].last_watched_at) 
       .map(([path, data]) => {
          const photo = photos.find(p => p.rawPath.replace(/\\/g, '/') === path);
          
          if (photo && data.duration > 0) {
             const pct = data.progress / data.duration;
-            // Agar video 1% se zyada aur 98% se kam dekhi hai tabhi dikhao
             if (pct > 0.01 && pct < 0.98) return { photo, data };
          }
          return null;
       })
       .filter(Boolean)
-      .slice(0, 8); // Sirf top 8 recent videos dikhayenge
+      .slice(0, 8); 
   }, [videoHistory, photos, isTrashView]);
 
   if (isLoading) {
@@ -119,7 +118,6 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
   return (
     <main className="relative z-10 w-full max-w-7xl mx-auto pb-12 space-y-12 select-none">
       
-      {/* 🔥 NAYA: CONTINUE WATCHING ROW (NETFLIX STYLE) */}
       {continueWatching.length > 0 && (
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
           <h2 className="text-lg sm:text-xl font-bold text-white/90 mb-4 px-2 flex items-center gap-3">
@@ -135,8 +133,8 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
                 <div key={`cw-${photo.id}`} className="snap-start shrink-0 h-48 sm:h-56">
                   <GalleryItem
                     item={photo}
-                    gridSize="medium" // Isko hamesha medium size me dikhayenge
-                    progressPercent={progressPct} // 🔥 Progress pass kiya
+                    gridSize="medium"
+                    progressPercent={progressPct}
                     isFav={favorites.includes(photo.id)}
                     isSelected={selectedIds.has(photo.id)}
                     isSelectionMode={selectedIds.size > 0}
@@ -156,7 +154,6 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
         </motion.div>
       )}
 
-      {/* REGULAR TIMELINE GRID */}
       {groupedImages.map((group, groupIndex) => (
         <motion.div 
           key={group.date || `group-${groupIndex}`} 
@@ -175,8 +172,6 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
           <div className="flex flex-wrap gap-3 sm:gap-4 after:content-[''] after:flex-grow-[10] after:h-0">
             {group.images.map((item, itemIndex) => {
               const safeKey = item.id && item.id.trim() !== '' ? item.id : `fallback-${group.date}-${itemIndex}`;
-
-              // 🔥 Grid mein bhi progress dikhane ka logic
               const histData = videoHistory[item.rawPath.replace(/\\/g, '/')];
               const progressPct = histData && histData.duration > 0 ? (histData.progress / histData.duration) * 100 : undefined;
 
@@ -185,7 +180,7 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
                   key={safeKey}
                   item={item}
                   gridSize={gridSize}
-                  progressPercent={progressPct} // 🔥 Progress Grid item ko bhi bheja
+                  progressPercent={progressPct} 
                   isFav={favorites.includes(item.id)}
                   isSelected={selectedIds.has(item.id)}
                   isSelectionMode={selectedIds.size > 0}
@@ -227,6 +222,10 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
         isTrashView={isTrashView}
         onBulkAction={handleBulkAction}
         onCancel={() => setSelectedIds(new Set())}
+        onLockToVault={onLockToVault ? () => { // 🔥 NAYA: Lock array banakar bhej diya
+          onLockToVault(Array.from(selectedIds));
+          setSelectedIds(new Set());
+        } : undefined}
       />
     </main>
   );

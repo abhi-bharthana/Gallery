@@ -1,3 +1,4 @@
+// src-tauri/src/commands.rs
 use crate::models::{AppState, MediaInfo};
 use crate::scanner::scan_directories;
 use crate::thumbnail::generate_thumbnail;
@@ -26,6 +27,7 @@ pub async fn fetch_synced_images(directories: Vec<String>, state: State<'_, AppS
     Ok("Sync Complete".to_string())
 }
 
+// 🔥 UPGRADED: Ab frontend batayega ki Ghost Mode ON hai ya OFF
 #[tauri::command]
 pub fn get_filtered_chunk(
     tab: String, 
@@ -33,17 +35,17 @@ pub fn get_filtered_chunk(
     sort_by: String, 
     limit: u32, 
     offset: u32, 
+    is_ghost_mode: bool, // 🛡️ NAYA PARAMETER
     state: State<'_, AppState>
 ) -> Result<Vec<MediaInfo>, String> {
     let conn = state.db_pool.get().map_err(|e| e.to_string())?;
-    db::get_filtered_media(&conn, &tab, &search, &sort_by, limit, offset).map_err(|e| e.to_string())
+    db::get_filtered_media(&conn, &tab, &search, &sort_by, limit, offset, is_ghost_mode).map_err(|e| e.to_string())
 }
 
 // 🔥 NAYA COMMAND: React se kill signal receive karega aur backend task abort karega
 #[tauri::command]
 pub fn cancel_thumbnail(id: String, state: State<'_, AppState>) {
     let mut tasks = state.active_thumb_tasks.lock().unwrap();
-    // Agar id map mein hai, toh sender activate ho jayega aur task instantly cancel ho jayega
     if let Some(kill_switch) = tasks.remove(&id) {
         let _ = kill_switch.send(()); 
     }
@@ -52,31 +54,24 @@ pub fn cancel_thumbnail(id: String, state: State<'_, AppState>) {
 // 🔥 SMART COMMAND: Ab yeh thumbnail generator cancel-aware hai!
 #[tauri::command]
 pub async fn get_thumbnail(id: String, original_path: String, size: u32, state: State<'_, AppState>) -> Result<String, String> {
-    // 1. Ek Kill Switch (oneshot channel) banate hain
     let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
     
-    // 2. State mein kill switch store karte hain taaki cancel command isko access kar sake
     {
         let mut tasks = state.active_thumb_tasks.lock().unwrap();
         tasks.insert(id.clone(), tx);
     }
 
-    // 3. Queue mein lagte hain
     let _permit = state.thumbnail_queue.acquire().await.map_err(|e| e.to_string())?;
     let path_lower = original_path.to_lowercase();
     let is_video = path_lower.ends_with(".mp4") || path_lower.ends_with(".mkv") || path_lower.ends_with(".mov") || path_lower.ends_with(".webm") || path_lower.ends_with(".hevc");
 
-    // 4. THE MAGIC: tokio::select! race karega. 
-    // Ya toh thumbnail ban jayega, ya `rx` trigger hoke task bich mein hi maar dega!
     tokio::select! {
         res = generate_thumbnail(&id, &original_path, size, is_video) => {
-            // Kaam pura ho gaya, tracker se hata do
             let mut tasks = state.active_thumb_tasks.lock().unwrap();
             tasks.remove(&id);
             res
         }
         _ = &mut rx => {
-            // Frontend ne task cancel kar diya kyu ki image screen se bahar chali gayi
             Err("Task cancelled by frontend".to_string())
         }
     }
@@ -88,11 +83,19 @@ pub fn get_opened_file() -> Option<String> {
     if args.len() > 1 && !args[1].starts_with("--") { Some(args[1].clone()) } else { None }
 }
 
+// 🔥 UPGRADED: Ab Albums mein bhi hidden photos nahi dikhengi jab tak Ghost Mode ON na ho!
 #[tauri::command]
-pub fn get_auto_albums(state: tauri::State<'_, AppState>) -> Result<Vec<AutoAlbum>, String> {
+pub fn get_auto_albums(is_ghost_mode: bool, state: tauri::State<'_, AppState>) -> Result<Vec<AutoAlbum>, String> {
     let conn = state.db_pool.get().map_err(|e| e.to_string())?;
     
-    let mut stmt = conn.prepare("SELECT id, url FROM media").map_err(|e| e.to_string())?;
+    // 🛡️ Security Check
+    let query = if is_ghost_mode {
+        "SELECT id, url FROM media" // Sab dikhao
+    } else {
+        "SELECT id, url FROM media WHERE is_vaulted = 0" // Sirf un-hidden dikhao
+    };
+
+    let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
 
     let media_iter = stmt.query_map([], |row| {
         let id: String = row.get(0)?;

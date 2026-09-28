@@ -1,10 +1,11 @@
+// src-tauri/src/scanner.rs
 use crate::models::MediaInfo;
 use std::fs;
 use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 use std::hash::Hasher;
 use twox_hash::XxHash64;
-use std::process::Command; // 🔥 NAYA IMPORT: FFprobe run karne ke liye
+use std::process::Command; 
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -25,7 +26,6 @@ pub fn scan_directories(directories: Vec<String>) -> Vec<MediaInfo> {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 let ext_lower = ext.to_lowercase();
                 
-                // 🔥 THE MASTER FIX: gif, bmp, heic, heif support add kar diya gaya hai
                 let is_image = matches!(ext_lower.as_str(), "jpg" | "jpeg" | "png" | "webp" | "avif" | "gif" | "bmp" | "heic" | "heif");
                 let is_video = matches!(ext_lower.as_str(), "mp4" | "mkv" | "mov" | "webm" | "hevc");
 
@@ -42,18 +42,15 @@ pub fn scan_directories(directories: Vec<String>) -> Vec<MediaInfo> {
                         }
                     }
 
-                    // 🔥 THE MASTER FIX: Header-only Fast Metadata Extraction
                     let mut width = 0;
                     let mut height = 0;
 
                     if is_image {
-                        // Yeh sirf image ka header padhega (ultra-fast, puri image decode nahi karega)
                         if let Ok((w, h)) = image::image_dimensions(&path) {
                             width = w as u32;
                             height = h as u32;
                         }
                     } else if is_video {
-                        // FFprobe se sirf video stream ki dimensions extract karenge
                         let mut cmd = Command::new("ffprobe");
                         cmd.args([
                             "-v", "error", 
@@ -91,10 +88,11 @@ pub fn scan_directories(directories: Vec<String>) -> Vec<MediaInfo> {
                             url: normalized_path,
                             timestamp,
                             filename,
-                            width,   // 🔥 Actual width ab DB mein save hogi
-                            height,  // 🔥 Actual height ab DB mein save hogi
+                            width, 
+                            height,
                             media_type,
                             file_size,
+                            vault_path: None, // 🔥 ERROR FIX: Scanner me initially file vault me nahi hoti hai
                         });
                     }
                 }

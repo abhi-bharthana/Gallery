@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Star, Trash2, RotateCcw, FolderPlus, Info, 
   Expand, Shrink, Play, Pause, MoreHorizontal,
-  Crop, Share, Copy, FolderOutput, Edit3, Monitor, ExternalLink, ChevronRight, Video
-} from 'lucide-react';
+  Crop, Share, Copy, FolderOutput, Edit3, Monitor, ExternalLink, ChevronRight, Video, ShieldCheck
+} from 'lucide-react'; // 🔥 ShieldCheck added
 
 export default function TopBar({ 
   image,
@@ -14,7 +14,7 @@ export default function TopBar({
   isCover, setIsCover, 
   isAutoPlaying, setIsAutoPlaying,
   onClose, onToggleFavorite, onDelete, onRestore, onAddToAlbum,
-  isExternal 
+  isExternal, onLockToVault // 🔥 NAYA PROP
 }: any) {
   const [showMenu, setShowMenu] = useState(false);
   const [showAlbums, setShowAlbums] = useState(false);
@@ -40,10 +40,9 @@ export default function TopBar({
   const activeIconBtnStyle = "p-2.5 text-purple-400 bg-purple-500/20 rounded-full transition-colors";
 
   return (
-    // 🔥 NAYA LAYOUT: Full width wrapper with pointer-events-none taaki neeche ki image click ho sake
     <div className="fixed top-0 left-0 w-full p-6 flex items-start justify-between z-[1001] pointer-events-none">
       
-      {/* 🔥 LEFT CORNER: Video Title */}
+      {/* LEFT CORNER: Video Title */}
       <div className="flex-1 min-w-0 pr-4 pointer-events-auto">
         {isVideo && (
           <div className="inline-flex items-center gap-3 px-4 py-2 bg-black/60 backdrop-blur-xl border border-white/10 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.8)] max-w-full">
@@ -55,13 +54,11 @@ export default function TopBar({
         )}
       </div>
 
-      {/* 🔥 RIGHT CORNER: Controls & Close Button */}
+      {/* RIGHT CORNER: Controls & Close Button */}
       <div className="flex items-center gap-3 pointer-events-auto shrink-0" onClick={(e) => e.stopPropagation()}>
         
-        {/* Compact Floating Pill Menu */}
         <div className="flex items-center gap-1 px-2 py-1.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.8)]">
           
-          {/* Slideshow Play/Pause: SIRF IMAGES KE LIYE */}
           {!isVideo && (
             <button 
               onClick={() => setIsAutoPlaying(!isAutoPlaying)} 
@@ -72,7 +69,6 @@ export default function TopBar({
             </button>
           )}
 
-          {/* Expand/Shrink */}
           <button 
             onClick={() => setIsCover(!isCover)} 
             className={isCover ? activeIconBtnStyle : iconBtnStyle}
@@ -81,7 +77,6 @@ export default function TopBar({
             {isCover ? <Shrink size={20} /> : <Expand size={20} />}
           </button>
 
-          {/* Info */}
           <button 
             onClick={() => setShowInfo(!showInfo)} 
             className={showInfo ? activeIconBtnStyle : iconBtnStyle}
@@ -90,7 +85,17 @@ export default function TopBar({
             <Info size={20} />
           </button>
 
-          {/* EXTERNAL HIDE: Favorite or Restore */}
+          {/* 🔥 NAYA: Lock to Vault Button */}
+          {!isExternal && !isTrashed && onLockToVault && (
+            <button 
+              onClick={onLockToVault} 
+              className="p-2.5 text-purple-400 hover:text-purple-300 hover:bg-purple-500/20 transition-colors rounded-full" 
+              title="Lock in Vault"
+            >
+              <ShieldCheck size={20} />
+            </button>
+          )}
+
           {!isExternal && (
             isTrashed ? (
               <button onClick={onRestore} className={iconBtnStyle} title="Restore">
@@ -103,7 +108,6 @@ export default function TopBar({
             )
           )}
 
-          {/* More Options Dropdown */}
           <div className="relative" ref={menuRef}>
             <button 
               onClick={() => { setShowMenu(!showMenu); setShowAlbums(false); }} 
@@ -125,7 +129,6 @@ export default function TopBar({
                     <>
                       {!isVideo && <MenuItem icon={Crop} label="Edit" hasArrow />}
                       
-                      {/* Add To with nested Albums menu */}
                       <div 
                         className="relative" 
                         onMouseEnter={() => setShowAlbums(true)}
@@ -193,7 +196,6 @@ export default function TopBar({
           </div>
         </div>
 
-        {/* 🔥 HIGH CONTRAST CLOSE BUTTON 🔥 */}
         <button 
           onClick={onClose} 
           className="p-2.5 text-gray-200 hover:text-white bg-black/60 hover:bg-black/80 backdrop-blur-xl border border-white/20 shadow-[0_8px_30px_rgba(0,0,0,0.8)] rounded-full transition-all"
@@ -205,7 +207,6 @@ export default function TopBar({
   );
 }
 
-// 📌 Helper Component: Dropdown Menu Item
 const MenuItem = ({ icon: Icon, label, hasArrow, onClick, onMouseEnter }: any) => (
   <button 
     onClick={onClick} 

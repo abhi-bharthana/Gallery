@@ -31,7 +31,12 @@ twox-hash = "1.6.3"
 tiny_http = "0.12"
 r2d2 = "0.8"
 r2d2_sqlite = "0.22"
+aes-gcm = "0.11.1"
+rand = "0.10.3"
+windows = { version = "0.62.2", features = ["Security_Credentials_UI", "Foundation"] }
+bcrypt = "0.19.3"
 
+hex = "0.4"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 # Release build ke liye battery aur speed optimization

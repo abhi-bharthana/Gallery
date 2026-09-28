@@ -1,9 +1,10 @@
+// src-tauri/src/models.rs
 use serde::Serialize;
 use tokio::sync::Semaphore;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::collections::HashMap;
-use std::sync::Mutex; // 🔥 NAYA IMPORT
+use std::sync::Mutex; 
 
 #[derive(Serialize)]
 pub struct MediaInfo {
@@ -16,6 +17,7 @@ pub struct MediaInfo {
     #[serde(rename = "type")]
     pub media_type: String,
     pub file_size: u64, 
+    pub vault_path: Option<String>, // 🔥 YEH RAHI HAMARI MISSING LINK
 }
 
 pub struct AppState {

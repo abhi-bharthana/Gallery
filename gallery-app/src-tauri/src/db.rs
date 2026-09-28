@@ -1,3 +1,4 @@
+// src-tauri/src/db.rs
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, Result};
@@ -49,16 +50,20 @@ pub fn init_db(db_path: &PathBuf) -> Result<Pool<SqliteConnectionManager>, rusql
     ")?;
 
     // 🔥 THE MASTER FIX: Smart Schema Migration 🔥
-    // Agar user ke paas purana DB hai, toh yeh silently naye columns add karega
-    // let _ = ... likhne se agar column pehle se hoga toh error ignore ho jayega aur app crash nahi hogi
+    // Naye 'Ghost Mode' Vault columns silently add honge
     let _ = conn.execute("ALTER TABLE media ADD COLUMN width INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE media ADD COLUMN height INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE media ADD COLUMN file_size INTEGER DEFAULT 0", []);
+    
+    // 🛡️ NAYA: Vault State Columns
+    let _ = conn.execute("ALTER TABLE media ADD COLUMN is_vaulted INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE media ADD COLUMN vault_path TEXT DEFAULT ''", []);
 
     Ok(pool)
 }
 
 // 🔥 Smart Two-Way Sync (Add, Update & Delete)
+// Yahan dhyan rakhna hai ki scanner vault files ko delete na kar de!
 pub fn insert_media(conn: &mut Connection, media_list: Vec<MediaInfo>) -> Result<()> {
     let tx = conn.transaction()?;
     
@@ -90,9 +95,10 @@ pub fn insert_media(conn: &mut Connection, media_list: Vec<MediaInfo>) -> Result
         }
     }
     
-    // 🔥 STALE DATA CLEANUP LOGIC 🔥
+    // 🔥 STALE DATA CLEANUP LOGIC (Optimized for Vault) 🔥
     {
-        let mut stmt = tx.prepare("SELECT id FROM media")?;
+        // Sirf unko check karo jo vaulted NAHI hain. Vaulted files safely chupi rahengi.
+        let mut stmt = tx.prepare("SELECT id FROM media WHERE is_vaulted = 0")?;
         let db_ids_iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
         
         let mut ids_to_delete = Vec::new();
@@ -114,16 +120,23 @@ pub fn insert_media(conn: &mut Connection, media_list: Vec<MediaInfo>) -> Result
     Ok(())
 }
 
+// 🔥 NAYA: is_ghost_mode filter & vault_path projection
 pub fn get_filtered_media(
     conn: &Connection, 
     _tab: &str, 
     search: &str, 
     sort_by: &str, 
     limit: u32, 
-    offset: u32
+    offset: u32,
+    is_ghost_mode: bool 
 ) -> Result<Vec<MediaInfo>> {
-    let mut query = String::from("SELECT id, url, timestamp, filename, width, height, media_type, file_size FROM media WHERE 1=1");
+    // 🔥 MASTER FIX 1: Added vault_path to SELECT
+    let mut query = String::from("SELECT id, url, timestamp, filename, width, height, media_type, file_size, vault_path FROM media WHERE 1=1");
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if !is_ghost_mode {
+        query.push_str(" AND is_vaulted = 0");
+    }
 
     if !search.is_empty() {
         query.push_str(" AND filename LIKE ?");
@@ -147,15 +160,26 @@ pub fn get_filtered_media(
     let media_iter = stmt.query_map(&params_refs[..], |row| {
         let ts: i64 = row.get(2)?;
         let f_size: i64 = row.get(7).unwrap_or(0); 
+        
+        // 🔥 MASTER FIX 2: Extracted vault_path from column index 8
+        let v_path: Option<String> = row.get(8).unwrap_or(None);
+        // DB mein empty string bhi store ho sakti hai, toh isko None mein convert kar do agar empty hai
+        let final_vault_path = if let Some(p) = v_path {
+            if p.trim().is_empty() { None } else { Some(p) }
+        } else {
+            None
+        };
+
         Ok(MediaInfo {
             id: row.get(0)?,
-            url: row.get(1)?,
+            url: row.get(1)?, 
             timestamp: ts as u64,
             filename: row.get(3)?,
             width: row.get(4)?,
             height: row.get(5)?,
             media_type: row.get(6)?,
             file_size: f_size as u64, 
+            vault_path: final_vault_path, // 🔥 Passed to frontend
         })
     })?;
 

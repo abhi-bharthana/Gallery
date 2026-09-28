@@ -24,7 +24,7 @@ export interface Album {
 
 const CHUNK_SIZE = 100;
 
-export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_desc') {
+export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_desc', isGhostMode: boolean = false) {
   const [allPhotos, setAllPhotos] = useState<LocalMedia[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -60,14 +60,14 @@ export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_
     fetchHistory(); 
   }, [fetchHistory]);
 
-  const fetchAutoAlbums = async () => {
+  const fetchAutoAlbums = useCallback(async () => {
     try {
-      const folders: Album[] = await invoke('get_auto_albums');
+      const folders: Album[] = await invoke('get_auto_albums', { isGhostMode });
       setAutoAlbums(folders);
     } catch (e) {
       console.error("Auto albums fetch failed", e);
     }
-  };
+  }, [isGhostMode]);
 
   const loadFromDatabase = useCallback(async (append: boolean = false, offset: number = 0) => {
     try {
@@ -77,19 +77,24 @@ export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_
         search: searchQuery, 
         sortBy: sortBy,      
         limit: CHUNK_SIZE, 
-        offset 
+        offset,
+        isGhostMode 
       });
       
       const loaded: LocalMedia[] = fileData.map((img: any, index: number) => ({
         id: img.id && img.id.trim() !== '' ? img.id : `media-${offset + index}-${Date.now()}`,
-        url: convertFileSrc(img.url),
-        rawPath: img.url, 
+        
+        // 🔥 THE MASTER FIX: Check img.vault_path instead of img.url for .enc files
+        url: img.vault_path && img.vault_path.trim() !== '' 
+              ? `http://127.0.0.1:39393/media?path=${encodeURIComponent(img.vault_path)}` 
+              : convertFileSrc(img.url),
+              
+        rawPath: img.vault_path || img.url, 
         timestamp: img.timestamp,
         filename: img.filename,
         width: img.width || 800,  
         height: img.height || 800,
         type: img.media_type || 'image',
-        // 🔥 FIX: Rust bhejta hai file_size (snake_case mein frontend pe aata hai ya camel mein? Generally Rust struct as-is serialized hota hai)
         fileSize: img.file_size || img.fileSize || 0, 
       }));
       
@@ -103,10 +108,8 @@ export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, sortBy]); 
+  }, [searchQuery, sortBy, isGhostMode, fetchAutoAlbums]); 
 
-  // 🔥 THE MASTER FIX: Sync Logic Re-Written 
-  // Ye directly Rust ko scan karne bolega and await karega, fir fetch start karega
   const syncImages = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -120,10 +123,7 @@ export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_
         return;
       }
       
-      // Rust backend ko command do foldero ko scan and sync karne ka DB me
       await invoke('fetch_synced_images', { directories });
-      
-      // Fir newly fresh DB se pehla chunk manga lo
       await loadFromDatabase(false, 0);
     } catch (error) {
       console.error('Scan Error:', error);
@@ -132,7 +132,6 @@ export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_
     }
   }, [loadFromDatabase]);
 
-  // Debounce for search and sort changes ONLY
   useEffect(() => {
     const saved = localStorage.getItem('synced_folders');
     const directories = saved ? JSON.parse(saved) : [];
@@ -147,7 +146,7 @@ export function useGalleryData(searchQuery: string = '', sortBy: string = 'time_
       setIsLoading(false);
       setHasMore(false);
     }
-  }, [loadFromDatabase]); // Removed syncImages from this useEffect
+  }, [loadFromDatabase]); 
 
   const loadMore = useCallback(async () => {
     if (isLoading || !hasMore) return;

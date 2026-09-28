@@ -1,8 +1,9 @@
 // src/App.tsx
-import { useState, useMemo, useEffect } from 'react'; // 🔥 FIX: useEffect import kiya
+import { useState, useMemo, useEffect } from 'react'; 
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core'; // 🔥 API call ke liye
 import './App.css';
 
 import Sidebar from './components/Sidebar/Sidebar';
@@ -12,6 +13,7 @@ import MediaViewer from './components/MediaViewer/index';
 import FolderManager from './components/FolderManager';
 import AlbumsView from './components/AlbumsView';
 import SplashScreen from './components/SplashScreen';
+import VaultUnlock from './components/Vault/VaultUnlock'; // 🔥 Ghost mode unlock UI
 
 import { useGalleryData, LocalImage } from './hooks/useGalleryData';
 import { useSystemHooks } from './hooks/useSystemHooks'; 
@@ -25,17 +27,50 @@ export default function App() {
   const [sortBy, setSortBy] = useState('time_desc'); 
   const [showSplash, setShowSplash] = useState(true);
 
-  // 🔥 DB-delegated search & sorting hook
-  const gallery = useGalleryData(searchQuery, sortBy);
+  // 🔥 GHOST MODE STATES
+  const [isGhostMode, setIsGhostMode] = useState(false);
+  const [showVaultAuth, setShowVaultAuth] = useState(false);
+
+  // 🔥 Global Shortcut for Ghost Mode (Ctrl + Shift + H)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        if (isGhostMode) {
+          setIsGhostMode(false); // Relock instantly
+        } else {
+          setShowVaultAuth(true); // Open Authentication Modal
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isGhostMode]);
+
+  // 🔥 DB-delegated search & sorting hook (Ghost Mode injected!)
+  const gallery = useGalleryData(searchQuery, sortBy, isGhostMode);
   useSystemHooks(setSelectedImage, setShowSplash);
 
-  // 🔥 THE MASTER FIX: Silent Auto-Sync on Startup 🔥
-  // App khulte hi background mein naye folders scan karega, bina screen lag kiye!
+  // 🔥 1-Click Vault Lock Engine
+  const handleLockToVault = async (ids: string[]) => {
+    try {
+      for (const id of ids) {
+        const img = gallery.allPhotos.find((p) => p.id === id);
+        if (img) {
+           await invoke('encrypt_and_lock_file', { filePath: img.rawPath });
+        }
+      }
+      gallery.syncImages(); // Refresh UI to hide files
+      if (selectedImage) setSelectedImage(null); // Close viewer if a viewed item was locked
+    } catch (err) {
+      console.error('Vault lock error:', err);
+    }
+  };
+
   useEffect(() => {
     gallery.syncImages();
-  }, []); // [] ka matlab hai sirf ek baar chalega jab app open hogi
+  }, []); 
 
-  // 🔥 Memoized filtering so switching tabs never triggers timeline lag
   const displayedPhotos = useMemo(() => {
     let base = [...gallery.allPhotos]; 
     
@@ -65,7 +100,6 @@ export default function App() {
       <AnimatePresence>{showSplash && <SplashScreen />}</AnimatePresence>
 
       <div className="fixed inset-0 w-full h-full bg-[#0a0a0c] text-white flex overflow-hidden">
-        {/* 🔥 Removed forced gallery.syncImages() on tab click */}
         <Sidebar 
           activeTab={activeTab} 
           setActiveTab={(tab) => {
@@ -91,6 +125,7 @@ export default function App() {
                   isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
                   favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                   onDelete={gallery.moveToTrash} isTrashView={activeTab === 'Trash'} onRestore={gallery.restoreFromTrash} 
+                  onLockToVault={handleLockToVault} // 🔥 Passed to timeline gallery
                 />
               )}
 
@@ -107,6 +142,7 @@ export default function App() {
                         isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
                         favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                         onDelete={gallery.moveToTrash} isTrashView={false} onRestore={gallery.restoreFromTrash} 
+                        onLockToVault={handleLockToVault} // 🔥 Passed to album gallery
                       />
                     </div>
                   ) : (
@@ -146,11 +182,25 @@ export default function App() {
                 onNext={() => hasNext && setSelectedImage(displayedPhotos[idx + 1])}
                 onPrev={() => hasPrev && setSelectedImage(displayedPhotos[idx - 1])}
                 hasNext={hasNext} hasPrev={hasPrev}
+                onLockToVault={(ids: string[]) => handleLockToVault(ids)} // 🔥 Passed to Media Viewer
               />
             );
           })()}
         </AnimatePresence>
       </div>
+
+      {/* 🔥 The Ghost Mode Authentication Modal */}
+      <AnimatePresence>
+        {showVaultAuth && (
+          <VaultUnlock 
+            onUnlocked={() => {
+              setIsGhostMode(true);
+              setShowVaultAuth(false);
+            }} 
+            onClose={() => setShowVaultAuth(false)} 
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }
