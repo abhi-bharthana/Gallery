@@ -31,12 +31,14 @@ export default function GalleryItem({
   const [isHovered, setIsHovered] = useState(false);
 
   const ratio = (item.width && item.height) ? (item.width / item.height) : 1.5;
+  
+  // 🔥 MEDIUM GRID SIZE REDUCED (h-48 -> h-40, 256 -> 224)
   const sizeClasses = 
     gridSize === 'small' ? 'h-32 sm:h-40' : 
-    gridSize === 'medium' ? 'h-48 sm:h-64' : 
+    gridSize === 'medium' ? 'h-40 sm:h-56' : 
     'h-72 sm:h-[400px]';
   
-  const baseHeight = gridSize === 'small' ? 160 : gridSize === 'medium' ? 256 : 400;
+  const baseHeight = gridSize === 'small' ? 160 : gridSize === 'medium' ? 224 : 400;
   const flexBasis = baseHeight * ratio;
 
   const isVideo = item.type === 'video' || !!item.filename?.match(/\.(mp4|mkv|mov|webm|hevc)$/i);
@@ -67,7 +69,8 @@ export default function GalleryItem({
         }}
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
-        className={`relative cursor-pointer rounded-[1.75rem] border w-full h-full transition-all duration-300 z-10 ${
+        // 🔥 YAHAN 'overflow-hidden' ADD KIYA HAI 🔥
+        className={`relative cursor-pointer overflow-hidden rounded-[1.75rem] border w-full h-full transition-all duration-300 z-10 ${
           isSelected 
             ? 'border-purple-500 scale-[0.95] shadow-[0_0_30px_rgba(168,85,247,0.3)] bg-[#121214]' 
             : 'border-white/[0.04] hover:border-white/10 hover:shadow-xl'
@@ -75,7 +78,7 @@ export default function GalleryItem({
       >
         <Thumbnail image={item} gridSize={gridSize} className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
         
-        {/* 🔥 PREMIUM TITLE PILL (Video = Always Show, Photo = Hover Only) 🔥 */}
+        {/* PREMIUM TITLE PILL (Video = Always Show, Photo = Hover Only) */}
         <div className={`absolute bottom-4 left-4 right-16 z-20 pointer-events-none transition-all duration-400 ease-out flex ${
           isVideo ? 'opacity-100' : 'opacity-0 translate-y-3 group-hover:opacity-100 group-hover:translate-y-0'
         }`}>
@@ -100,10 +103,11 @@ export default function GalleryItem({
           </div>
         </div>
 
+        {/* 🔥 PREMIUM NETFLIX-STYLE PROGRESS BAR */}
         {progressPercent !== undefined && progressPercent > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-[5px] bg-white/20 z-30 pointer-events-none overflow-hidden rounded-b-[1.75rem]">
+          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/60 backdrop-blur-md z-30 pointer-events-none">
             <div 
-              className="h-full bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.8)] rounded-r-full transition-all duration-500" 
+              className="h-full bg-gradient-to-r from-red-600 to-red-400 shadow-[0_0_15px_rgba(239,68,68,0.9)] rounded-r-full transition-all duration-500 ease-out" 
               style={{ width: `${Math.min(progressPercent, 100)}%` }}
             />
           </div>

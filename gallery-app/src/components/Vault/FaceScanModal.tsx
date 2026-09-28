@@ -1,107 +1,132 @@
 // src/components/Vault/FaceScanModal.tsx
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { loadFaceModels, getFaceEmbedding } from '../../utils/faceAuth';
 import { Camera, AlertCircle, Loader2, X, ScanFace, KeyRound } from 'lucide-react';
 import { motion } from 'framer-motion';
+import FaceWorker from '../../workers/faceWorker?worker'; // Vite Worker Import
 
 interface FaceScanModalProps {
   onCaptured: (descriptor: number[]) => void;
   onClose: () => void;
-  onUsePin?: () => void; // 🔥 NAYA PROP: Seedha PIN par shift hone ke liye
+  onUsePin?: () => void;
   mode: 'register' | 'verify';
 }
+
+const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
 
 export default function FaceScanModal({ onCaptured, onClose, onUsePin, mode }: FaceScanModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const workerRef = useRef<Worker | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [statusText, setStatusText] = useState('Loading AI Face Models...');
+  const [statusText, setStatusText] = useState('Loading AI Face Models in Background...');
   const [error, setError] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false); // Anti-spam lock
 
-  // 🔥 AUTO-SCAN LOGIC FOR VERIFICATION
+  // Video frame nikal kar worker ko bhejna
+  const detectFace = useCallback(() => {
+    if (!videoRef.current || !workerRef.current || isProcessing) return;
+    
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    setIsProcessing(true); // Jab tak worker reply na de, naya frame mat bhejo
+
+    // Memory me canvas banakar frame extract karna
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // Data background thread (worker) ko bhej diya
+      workerRef.current.postMessage({ type: 'DETECT', payload: { imageData } });
+    } else {
+      setIsProcessing(false);
+    }
+  }, [isProcessing]);
+
+  // AUTO-SCAN LOGIC FOR VERIFICATION
   const startAutoScan = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    
-    intervalRef.current = setInterval(async () => {
-      if (!videoRef.current) return;
-      try {
-        const descriptor = await getFaceEmbedding(videoRef.current);
-        if (descriptor) {
-          if (intervalRef.current) clearInterval(intervalRef.current); // Stop scanning once found
-          onCaptured(Array.from(descriptor));
-        }
-      } catch (err) {
-        console.error("Scanning frame error", err);
-      }
-    }, 800); // Har 800ms mein chup chap check karega
-  }, [onCaptured]);
+    intervalRef.current = setInterval(() => {
+      detectFace();
+    }, 800);
+  }, [detectFace]);
 
   useEffect(() => {
     let isMounted = true;
+    
+    // 1. Worker Initialize karo
+    workerRef.current = new FaceWorker();
+    workerRef.current.postMessage({ type: 'INIT', payload: { modelUrl: MODEL_URL } });
 
-    async function init() {
-      try {
-        await loadFaceModels();
-        if (!isMounted) return;
-        
+    // 2. Worker ke messages suno
+    workerRef.current.onmessage = async (e) => {
+      if (!isMounted) return;
+      const { type, descriptor, message } = e.data;
+
+      if (type === 'READY') {
         setStatusText(mode === 'register' ? 'Starting Camera...' : 'Authenticating...');
-        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-        
-        if (!isMounted) {
-          mediaStream.getTracks().forEach(track => track.stop());
-          return;
-        }
+        try {
+          const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+          if (!isMounted) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            return;
+          }
+          
+          streamRef.current = mediaStream;
+          if (videoRef.current) videoRef.current.srcObject = mediaStream;
+          
+          setLoading(false);
+          setStatusText(mode === 'register' ? 'Position your face in the circle & click Capture' : 'Scanning Face ID...');
 
-        streamRef.current = mediaStream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-        }
-        
-        setLoading(false);
-        setStatusText(mode === 'register' ? 'Position your face in the circle & click Capture' : 'Scanning Face ID...');
-
-        // Verify mode hai toh auto-scan start kar do
-        if (mode === 'verify') {
-          setTimeout(startAutoScan, 1000); // Camera ready hone ke baad shuru karo
-        }
-      } catch (err) {
-        console.error(err);
-        if (isMounted) {
+          if (mode === 'verify') {
+            setTimeout(startAutoScan, 1000); 
+          }
+        } catch (err) {
           setError('Camera permission denied.');
           setLoading(false);
         }
       }
-    }
 
-    init();
+      if (type === 'RESULT') {
+        setIsProcessing(false); // Naye frame ke liye lock khol do
+        if (descriptor) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          onCaptured(descriptor); // Face mil gaya!
+        } else if (mode === 'register' && statusText === 'Analyzing face geometry...') {
+          setError('No face detected. Look directly at the camera.');
+          setLoading(false);
+          setStatusText('Position your face in the circle & click Capture');
+        }
+      }
+
+      if (type === 'ERROR') {
+        setIsProcessing(false);
+        setError(message);
+        setLoading(false);
+      }
+    };
 
     return () => {
       isMounted = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
+      if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
+      // RAM free karne ke liye worker ko marna zaroori hai
+      workerRef.current?.terminate(); 
     };
-  }, [mode, startAutoScan]);
+  }, [mode, startAutoScan, onCaptured, statusText]);
 
-  const handleManualCapture = async () => {
-    if (!videoRef.current) return;
+  const handleManualCapture = () => {
+    if (!videoRef.current || isProcessing) return;
     setLoading(true);
     setStatusText('Analyzing face geometry...');
-    try {
-      const descriptor = await getFaceEmbedding(videoRef.current);
-      if (descriptor) {
-        onCaptured(Array.from(descriptor));
-      } else {
-        setError('No face detected. Look directly at the camera.');
-        setLoading(false);
-      }
-    } catch (err) {
-      setError('Face scanning failed.');
-      setLoading(false);
-    }
+    setError('');
+    detectFace(); // Worker ko signal jayega, result 'onmessage' mein catch hoga
   };
 
   return (
@@ -124,7 +149,7 @@ export default function FaceScanModal({ onCaptured, onClose, onUsePin, mode }: F
           </div>
         )}
 
-        {/* 🔥 DYNAMIC UI SWITCH */}
+        {/* DYNAMIC UI SWITCH */}
         {mode === 'register' ? (
           
           /* --- SETUP UI: CIRCULAR CAMERA --- */
@@ -132,7 +157,6 @@ export default function FaceScanModal({ onCaptured, onClose, onUsePin, mode }: F
             <div className="relative w-56 h-56 mx-auto rounded-full overflow-hidden border-4 border-purple-500/30 shadow-[0_0_40px_rgba(168,85,247,0.2)] bg-black">
               <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover -scale-x-100" />
               
-              {/* Sci-Fi Scanning Line Animation */}
               {!loading && (
                 <motion.div 
                   animate={{ top: ['-10%', '110%', '-10%'] }} 
@@ -155,7 +179,6 @@ export default function FaceScanModal({ onCaptured, onClose, onUsePin, mode }: F
           /* --- VERIFY UI: HIDDEN CAMERA, FACE ID ICON --- */
           <div className="flex flex-col items-center justify-center py-8">
             
-            {/* HIDDEN VIDEO: Pura gayab hai par background me record kar raha hai */}
             <video ref={videoRef} autoPlay muted playsInline className="absolute opacity-0 pointer-events-none w-1 h-1 -z-10" />
             
             <motion.div 
@@ -171,7 +194,6 @@ export default function FaceScanModal({ onCaptured, onClose, onUsePin, mode }: F
           </div>
         )}
 
-        {/* --- BOTTOM BUTTONS --- */}
         <div className="flex flex-col gap-3">
           {mode === 'register' && (
             <button 

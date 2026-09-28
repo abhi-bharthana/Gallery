@@ -44,35 +44,43 @@ export default function Thumbnail({ image, gridSize, className }: ThumbnailProps
       setIsFetching(false);
       return;
     }
+    
     let isMounted = true;
     let isCompleted = false; 
 
-    invoke('get_thumbnail', { id: image.id, originalPath: image.rawPath, size: 500 })
-      .then((path) => {
-        isCompleted = true; 
-        if (isMounted && typeof path === 'string') {
-          const converted = convertFileSrc(path);
-          if (thumbnailCache.size >= MAX_CACHE_SIZE) {
-            const firstKey = thumbnailCache.keys().next().value;
-            if (firstKey) thumbnailCache.delete(firstKey);
+    // DEBOUNCE TIMER ADDED: 150ms wait karega request bhejane se pehle
+    const delayTimer = setTimeout(() => {
+      invoke('get_thumbnail', { id: image.id, originalPath: image.rawPath, size: 500 })
+        .then((path) => {
+          isCompleted = true; 
+          if (isMounted && typeof path === 'string') {
+            const converted = convertFileSrc(path);
+            if (thumbnailCache.size >= MAX_CACHE_SIZE) {
+              const firstKey = thumbnailCache.keys().next().value;
+              if (firstKey) thumbnailCache.delete(firstKey);
+            }
+            thumbnailCache.set(image.id, converted);
+            setThumbnailSrc(converted);
           }
-          thumbnailCache.set(image.id, converted);
-          setThumbnailSrc(converted);
-        }
-      })
-      .catch((err) => {
-        isCompleted = true; 
-        if (isMounted && err !== "Task cancelled by frontend") {
-          const fallback = convertFileSrc(image.rawPath);
-          setThumbnailSrc(fallback);
-        }
-      })
-      .finally(() => {
-        if (isMounted) setIsFetching(false);
-      });
+        })
+        .catch((err) => {
+          isCompleted = true; 
+          if (isMounted && err !== "Task cancelled by frontend") {
+            const fallback = convertFileSrc(image.rawPath);
+            setThumbnailSrc(fallback);
+          }
+        })
+        .finally(() => {
+          if (isMounted) setIsFetching(false);
+        });
+    }, 150);
 
     return () => {
       isMounted = false;
+      // Component hide hote hi timer cancel (Tauri bridge hit hi nahi hoga)
+      clearTimeout(delayTimer); 
+      
+      // Agar request nikal chuki thi, tabhi Rust kill switch dabayenge
       if (!isCompleted) invoke('cancel_thumbnail', { id: image.id }).catch(console.error);
     };
   }, [image.id, image.rawPath, isVisible]);
@@ -81,12 +89,11 @@ export default function Thumbnail({ image, gridSize, className }: ThumbnailProps
     <div ref={imgRef} className="relative w-full h-full rounded-[1.75rem]">
       
       {/* 1. AMBIENT GLOW LAYER (FREE & UNCLIPPED) */}
-      {/* Maine isko 'rounded-full' aur '-z-10' diya hai taaki light bilkul smooth phekega aur koi square edges nahi banenge */}
       {thumbnailSrc && (
         <img
           src={thumbnailSrc}
           alt="glow"
-          loading="lazy"
+          // 🔥 HATA DIYA: loading="lazy" (Kyunki humara IntersectionObserver pehle hi lazy load kar raha hai)
           className={`absolute inset-0 w-full h-full object-cover rounded-full transition-opacity duration-700 ease-out pointer-events-none 
             blur-[35px] saturate-[3] scale-[1.25] -z-10
             ${isImageReady ? 'opacity-0 group-hover:opacity-75' : 'opacity-0'} 
@@ -95,7 +102,6 @@ export default function Thumbnail({ image, gridSize, className }: ThumbnailProps
       )}
 
       {/* 2. MAIN IMAGE CONTAINER (LOCKED & CLIPPED) */}
-      {/* 🔥 THE MASTER FIX: 'overflow-hidden' sirf is layer par hai. Ab hover zoom corner nahi todega! */}
       <div className="relative z-10 w-full h-full rounded-[1.75rem] overflow-hidden bg-[#121214]">
         
         {!isImageReady && (
@@ -108,11 +114,11 @@ export default function Thumbnail({ image, gridSize, className }: ThumbnailProps
           <img
             src={thumbnailSrc}
             alt={image.filename}
-            loading="lazy"
+            // 🔥 HATA DIYA: loading="lazy" (Isse browser console me Intervention warning nahi aayegi)
             decoding="async"
             onLoad={() => setIsImageReady(true)} 
             className={`w-full h-full object-cover transition-all duration-700 ease-out 
-              ${className || ''} /* Iske andar hover:scale-105 hai jo ab safely rounded box me zoom hoga */
+              ${className || ''} 
               ${isImageReady ? 'blur-0 opacity-100' : 'blur-md opacity-0 scale-110'}
             `}
           />
