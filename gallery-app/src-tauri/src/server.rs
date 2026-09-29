@@ -62,10 +62,9 @@ pub fn start_streaming_server(media_state_clone: Arc<MediaStreamState>, app_hand
                     }
 
                     if let Some(decrypted_bytes) = decrypt_vault_file(&file_path, &app_dir) {
-                        let data_len = decrypted_bytes.len(); // 🔥 FIX 1: Exact size
+                        let data_len = decrypted_bytes.len(); 
 
-                        // Determine content type heuristically or fallback to general image
-                        let content_type = "image/jpeg"; // 🔥 FIX 2: Better browser acceptance
+                        let content_type = "image/jpeg"; 
 
                         let response = tiny_http::Response::new(
                             tiny_http::StatusCode(200),
@@ -75,7 +74,7 @@ pub fn start_streaming_server(media_state_clone: Arc<MediaStreamState>, app_hand
                                 tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-store"[..]).unwrap(), 
                             ],
                             std::io::Cursor::new(decrypted_bytes),
-                            Some(data_len), // Length add kiya
+                            Some(data_len), 
                             None,
                         );
                         let _ = request.respond(response);
@@ -85,7 +84,7 @@ pub fn start_streaming_server(media_state_clone: Arc<MediaStreamState>, app_hand
                     return;
                 }
 
-                // 🎬 🔥 VIDEO STREAMING ROUTE
+                // 🎬 🔥 VIDEO STREAMING ROUTE (FULLY UPGRADED)
                 let video_path = { state.current_path.lock().unwrap().clone() };
                 let audio_idx = { *state.audio_index.lock().unwrap() };
 
@@ -113,19 +112,23 @@ pub fn start_streaming_server(media_state_clone: Arc<MediaStreamState>, app_hand
                 let mut ffmpeg_cmd = Command::new("ffmpeg");
                 
                 if is_vaulted {
-                    // 🔥 If encrypted, FFmpeg reads from pipe (RAM) instead of disk!
                     ffmpeg_cmd.args(["-ss", &start_time, "-i", "pipe:0"]);
                 } else {
                     ffmpeg_cmd.args(["-ss", &start_time, "-i", &video_path]);
                 }
 
+                // 🔥 THE FIX: Black Screen, Desync, and Format Support
                 ffmpeg_cmd.args([
-                    "-map", "0:0",                  
+                    "-map", "0:v:0", // Sirf pehla Asli Video Stream uthayega (Ignores Cover Art)
                     "-map", &format!("0:{}", audio_idx), 
-                    "-c:v", "copy",                 
-                    "-c:a", "aac",                  
-                    "-f", "mp4",                    
-                    "-movflags", "frag_keyframe+empty_moov",
+                    "-c:v", "libx264", // Har format ko H.264 me transcode karega (Universal Web Support)
+                    "-preset", "ultrafast", // CPU bachane ke liye
+                    "-crf", "23", // Balanced Quality
+                    "-c:a", "aac",
+                    "-af", "aresample=async=1", // Audio aur Video ko hamesha perfectly sync rakhega
+                    "-f", "mp4",
+                    "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+                    "-max_muxing_queue_size", "1024",
                     "pipe:1"
                 ]);
                 
@@ -140,14 +143,14 @@ pub fn start_streaming_server(media_state_clone: Arc<MediaStreamState>, app_hand
                     Err(_) => return,
                 };
 
-                // 🔥 ON-THE-FLY VIDEO DECRYPTION THREAD
+                // ON-THE-FLY VIDEO DECRYPTION THREAD
                 if is_vaulted {
                     if let Some(mut stdin) = ffmpeg_child.stdin.take() {
                         let v_path = video_path.clone();
                         let dir_clone = app_dir.clone();
                         std::thread::spawn(move || {
                             if let Some(decrypted_bytes) = decrypt_vault_file(&v_path, &dir_clone) {
-                                let _ = stdin.write_all(&decrypted_bytes); // Stream directly to FFmpeg
+                                let _ = stdin.write_all(&decrypted_bytes); 
                             }
                         });
                     }
