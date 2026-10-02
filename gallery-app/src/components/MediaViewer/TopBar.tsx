@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Star, Trash2, RotateCcw, FolderPlus, Info, 
   Expand, Shrink, Play, Pause, MoreHorizontal,
-  Crop, Share, Copy, FolderOutput, Edit3, Monitor, ExternalLink, ChevronRight, Video, ShieldCheck
-} from 'lucide-react'; // 🔥 ShieldCheck added
+  Crop, Share, Copy, FolderOutput, Edit3, Monitor, ExternalLink, ChevronRight, Video, ShieldCheck, Unlock
+} from 'lucide-react'; // 🔥 Unlock add kiya
 
 export default function TopBar({ 
   image,
@@ -14,7 +14,8 @@ export default function TopBar({
   isCover, setIsCover, 
   isAutoPlaying, setIsAutoPlaying,
   onClose, onToggleFavorite, onDelete, onRestore, onAddToAlbum,
-  isExternal, onLockToVault // 🔥 NAYA PROP
+  isExternal, onLockToVault,
+  onUnlockFromVault, isGhostMode // 🔥 NAYE PROPS
 }: any) {
   const [showMenu, setShowMenu] = useState(false);
   const [showAlbums, setShowAlbums] = useState(false);
@@ -85,14 +86,25 @@ export default function TopBar({
             <Info size={20} />
           </button>
 
-          {/* 🔥 NAYA: Lock to Vault Button */}
-          {!isExternal && !isTrashed && onLockToVault && (
+          {/* 🔥 Lock to Vault Button (Sirf normal mode mein dikhega) */}
+          {!isExternal && !isTrashed && !isGhostMode && onLockToVault && (
             <button 
-              onClick={onLockToVault} 
+              onClick={() => onLockToVault([image.id])} 
               className="p-2.5 text-purple-400 hover:text-purple-300 hover:bg-purple-500/20 transition-colors rounded-full" 
               title="Lock in Vault"
             >
               <ShieldCheck size={20} />
+            </button>
+          )}
+
+          {/* 🔥 Unlock from Vault Button (Sirf Ghost Mode mein dikhega) */}
+          {!isExternal && !isTrashed && isGhostMode && onUnlockFromVault && (
+            <button 
+              onClick={() => onUnlockFromVault([image.id])} 
+              className="p-2.5 text-green-400 hover:text-green-300 hover:bg-green-500/20 transition-colors rounded-full" 
+              title="Unhide & Restore"
+            >
+              <Unlock size={20} />
             </button>
           )}
 

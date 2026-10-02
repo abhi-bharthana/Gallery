@@ -236,3 +236,60 @@ pub async fn encrypt_and_lock_file(
 
     Ok(encrypted_path_str)
 }
+
+#[tauri::command]
+pub async fn decrypt_and_unlock_file(
+    id: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>
+) -> Result<String, String> {
+    let conn = state.db_pool.get().map_err(|e| format!("DB Error: {}", e))?;
+
+    // 1. Original URL aur Vault Path DB se nikalo
+    let (original_url, vault_path): (String, String) = conn.query_row(
+        "SELECT url, vault_path FROM media WHERE id = ?1 AND is_vaulted = 1",
+        rusqlite::params![id],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    ).map_err(|_| "File not found in vault".to_string())?;
+
+    let v_path = std::path::Path::new(&vault_path);
+    if !v_path.exists() { return Err("Encrypted file missing from disk.".to_string()); }
+
+    // 2. Encryption Key Setup
+    let config_path = get_config_path(&app_handle)?;
+    let config_data = fs::read_to_string(config_path).map_err(|e| e.to_string())?;
+    let config: VaultConfig = serde_json::from_str(&config_data).map_err(|e| e.to_string())?;
+
+    let mut key = [0u8; 32];
+    for (i, &byte) in config.master_hash.as_bytes().iter().cycle().take(32).enumerate() {
+        key[i] = byte;
+    }
+
+    // 3. Read and Decrypt
+    let encrypted_data = fs::read(v_path).map_err(|e| e.to_string())?;
+    if encrypted_data.len() < 12 { return Err("Invalid encrypted file".to_string()); }
+
+    let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
+    let cipher_key = aes_gcm::Key::<Aes256Gcm>::try_from(key.as_slice()).unwrap();
+    let cipher = Aes256Gcm::new(&cipher_key);
+    let nonce = Nonce::try_from(nonce_bytes).unwrap();
+
+    let plaintext = cipher.decrypt(&nonce, ciphertext).map_err(|e| format!("Decryption failed: {}", e))?;
+
+    // 🔥 MAIN FIX: Folder recreate karna agar accidentally delete ho gaya ho 
+    if let Some(parent) = std::path::Path::new(&original_url).parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    // 4. Save back to original path & Delete Vault file
+    fs::write(&original_url, plaintext).map_err(|e| format!("Failed to restore file: {}", e))?;
+    fs::remove_file(v_path).map_err(|e| e.to_string())?;
+
+    // 5. Update Database to un-vault it
+    conn.execute(
+        "UPDATE media SET is_vaulted = 0, vault_path = '' WHERE id = ?1",
+        rusqlite::params![id],
+    ).map_err(|e| format!("Failed to update DB: {}", e))?;
+
+    Ok(original_url)
+}

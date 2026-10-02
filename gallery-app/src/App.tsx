@@ -51,7 +51,7 @@ export default function App() {
   const gallery = useGalleryData(searchQuery, sortBy, isGhostMode);
   useSystemHooks(setSelectedImage, setShowSplash);
 
-  // 🔥 1-Click Vault Lock Engine
+  // 🔥 1-Click Vault Lock Engine (Hide)
   const handleLockToVault = async (ids: string[]) => {
     try {
       for (const id of ids) {
@@ -64,6 +64,19 @@ export default function App() {
       if (selectedImage) setSelectedImage(null); // Close viewer if a viewed item was locked
     } catch (err) {
       console.error('Vault lock error:', err);
+    }
+  };
+
+  // 🔥 1-Click Vault Unlock Engine (Unhide)
+  const handleUnlockFromVault = async (ids: string[]) => {
+    try {
+      for (const id of ids) {
+        await invoke('decrypt_and_unlock_file', { id });
+      }
+      gallery.syncImages(); // Refresh UI to show files normally
+      if (selectedImage) setSelectedImage(null); // Close viewer
+    } catch (err) {
+      console.error('Vault unlock error:', err);
     }
   };
 
@@ -125,7 +138,9 @@ export default function App() {
                   isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
                   favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                   onDelete={gallery.moveToTrash} isTrashView={activeTab === 'Trash'} onRestore={gallery.restoreFromTrash} 
-                  onLockToVault={handleLockToVault} // 🔥 Passed to timeline gallery
+                  onLockToVault={handleLockToVault} 
+                  onUnlockFromVault={handleUnlockFromVault} // 🔥 Added
+                  isGhostMode={isGhostMode} // 🔥 Added
                 />
               )}
 
@@ -142,7 +157,9 @@ export default function App() {
                         isLoading={gallery.isLoading} gridSize={gridSize} onImageClick={setSelectedImage} 
                         favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                         onDelete={gallery.moveToTrash} isTrashView={false} onRestore={gallery.restoreFromTrash} 
-                        onLockToVault={handleLockToVault} // 🔥 Passed to album gallery
+                        onLockToVault={handleLockToVault} 
+                        onUnlockFromVault={handleUnlockFromVault} // 🔥 Added
+                        isGhostMode={isGhostMode} // 🔥 Added
                       />
                     </div>
                   ) : (
@@ -182,7 +199,9 @@ export default function App() {
                 onNext={() => hasNext && setSelectedImage(displayedPhotos[idx + 1])}
                 onPrev={() => hasPrev && setSelectedImage(displayedPhotos[idx - 1])}
                 hasNext={hasNext} hasPrev={hasPrev}
-                onLockToVault={(ids: string[]) => handleLockToVault(ids)} // 🔥 Passed to Media Viewer
+                onLockToVault={(ids: string[]) => handleLockToVault(ids)} 
+                onUnlockFromVault={(ids: string[]) => handleUnlockFromVault(ids)} // 🔥 Added
+                isGhostMode={isGhostMode} // 🔥 Added
               />
             );
           })()}

@@ -85,7 +85,8 @@ fn main() {
             vault::update_vault_pin,       // 🔥 NAYA
             vault::update_auth_policy,     // 🔥 NAYA
             vault::verify_vault_pin,       // 🔥 NAYA
-            vault::get_auth_policy         // 🔥 NAYA
+            vault::get_auth_policy,
+            vault::decrypt_and_unlock_file         // 🔥 NAYA
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

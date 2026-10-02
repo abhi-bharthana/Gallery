@@ -19,11 +19,27 @@ export interface GalleryProps {
   isTrashView?: boolean; 
   onRestore?: (id: string) => void; 
   onLockToVault?: (ids: string[]) => void;
+  onUnlockFromVault?: (ids: string[]) => void; // 🔥 ADDED
+  isGhostMode?: boolean; // 🔥 ADDED
 }
 
 const CHUNK_SIZE = 30; 
 
-export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize, onImageClick, favorites, onToggleFavorite, onDelete, isTrashView, onRestore, onLockToVault }: GalleryProps) {
+export default function Gallery({ 
+  photos, 
+  videoHistory = {}, 
+  isLoading, 
+  gridSize, 
+  onImageClick, 
+  favorites, 
+  onToggleFavorite, 
+  onDelete, 
+  isTrashView, 
+  onRestore, 
+  onLockToVault,
+  onUnlockFromVault, // 🔥 ADDED
+  isGhostMode // 🔥 ADDED
+}: GalleryProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const lastTapRef = useRef<number>(0);
   const isDragSelecting = useRef<boolean>(false);
@@ -104,7 +120,7 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
     getScrollElement: () => scrollContainer,
     estimateSize: (index) => {
       const item = flattenedItems[index];
-      if (item.type === 'continue_watching') return 280; // 🔥 Height reduce ki hai kyunki cards chhote ho gaye hain
+      if (item.type === 'continue_watching') return 280; 
       if (item.type === 'header') return 80; 
       return 600; 
     },
@@ -164,7 +180,6 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
                     {item.data.map(({ photo, data }: any) => {
                       const progressPct = data.duration > 0 ? (data.progress / data.duration) * 100 : 0;
                       
-                      // 🔥 SIZE REDUCED: 224px se 192px kar diya taaki medium grid chhota lage
                       const ratio = (photo.width && photo.height) ? (photo.width / photo.height) : 16/9;
                       const cardWidth = Math.max(180, 192 * ratio);
 
@@ -251,6 +266,11 @@ export default function Gallery({ photos, videoHistory = {}, isLoading, gridSize
           onLockToVault(Array.from(selectedIds));
           setSelectedIds(new Set());
         } : undefined}
+        onUnlockFromVault={onUnlockFromVault ? () => { // 🔥 ADDED
+          onUnlockFromVault(Array.from(selectedIds));
+          setSelectedIds(new Set());
+        } : undefined}
+        isGhostMode={isGhostMode} // 🔥 ADDED
       />
     </main>
   );
