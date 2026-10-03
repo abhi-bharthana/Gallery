@@ -1,7 +1,6 @@
 // src/components/Gallery/GalleryItem.tsx
-import { useState } from 'react';
+import { useState, memo } from 'react'; 
 import { motion } from 'framer-motion';
-// 🔥 NAYA: 'Image as ImageIcon' import kiya taaki photos ke liye icon dikha sakein
 import { Star, Trash2, Check, RotateCcw, Video, Image as ImageIcon } from 'lucide-react'; 
 import Thumbnail from './Thumbnail';
 import { LocalImage } from '../../hooks/useGalleryData';
@@ -23,16 +22,15 @@ export interface GalleryItemProps {
   onRestore?: (id: string) => void;
 }
 
-export default function GalleryItem({ 
+const GalleryItem = ({ 
   item, gridSize, isFav, isSelected, isSelectionMode, isTrashView, progressPercent,
   onImageClick, toggleSelect, onPointerDown, onPointerEnter, 
   onToggleFavorite, onDelete, onRestore 
-}: GalleryItemProps) {
+}: GalleryItemProps) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const ratio = (item.width && item.height) ? (item.width / item.height) : 1.5;
   
-  // 🔥 MEDIUM GRID SIZE REDUCED (h-48 -> h-40, 256 -> 224)
   const sizeClasses = 
     gridSize === 'small' ? 'h-32 sm:h-40' : 
     gridSize === 'medium' ? 'h-40 sm:h-56' : 
@@ -57,6 +55,7 @@ export default function GalleryItem({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* 🔥 FIX: GLIDE WAPAS AAGAYA! motion.div aur layoutId restore kar diya */}
       <motion.div 
         layoutId={`media-${item.id}`}
         onClick={(e) => {
@@ -69,7 +68,6 @@ export default function GalleryItem({
         }}
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
-        // 🔥 YAHAN 'overflow-hidden' ADD KIYA HAI 🔥
         className={`relative cursor-pointer overflow-hidden rounded-[1.75rem] border w-full h-full transition-all duration-300 z-10 ${
           isSelected 
             ? 'border-purple-500 scale-[0.95] shadow-[0_0_30px_rgba(168,85,247,0.3)] bg-[#121214]' 
@@ -78,11 +76,9 @@ export default function GalleryItem({
       >
         <Thumbnail image={item} gridSize={gridSize} className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
         
-        {/* PREMIUM TITLE PILL (Video = Always Show, Photo = Hover Only) */}
         <div className={`absolute bottom-4 left-4 right-16 z-20 pointer-events-none transition-all duration-400 ease-out flex ${
           isVideo ? 'opacity-100' : 'opacity-0 translate-y-3 group-hover:opacity-100 group-hover:translate-y-0'
         }`}>
-          {/* Box ko inline-flex aur rounded-full diya taaki exact Pill shape aaye */}
           <div className="inline-flex items-center gap-2.5 bg-black/80 backdrop-blur-xl border border-white/10 pl-3 pr-4 py-1.5 rounded-full shadow-[0_8px_20px_rgba(0,0,0,0.8)] overflow-hidden max-w-full">
             {isVideo ? (
               <Video size={14} className="text-purple-400 shrink-0 drop-shadow-md" />
@@ -103,7 +99,6 @@ export default function GalleryItem({
           </div>
         </div>
 
-        {/* 🔥 PREMIUM NETFLIX-STYLE PROGRESS BAR */}
         {progressPercent !== undefined && progressPercent > 0 && (
           <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/60 backdrop-blur-md z-30 pointer-events-none">
             <div 
@@ -121,7 +116,6 @@ export default function GalleryItem({
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className={`absolute top-4 right-4 flex flex-col gap-2 transition-all duration-300 z-30 translate-y-[-10px] group-hover:translate-y-0 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
           {!isTrashView && (
             <button onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.id); }} className="p-2.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white/90 hover:bg-black/60 hover:scale-110 hover:text-yellow-400 transition-all active:scale-95 shadow-xl">
@@ -141,4 +135,15 @@ export default function GalleryItem({
       </motion.div>
     </motion.div>
   );
-}
+};
+
+export default memo(GalleryItem, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isFav === nextProps.isFav &&
+    prevProps.isSelectionMode === nextProps.isSelectionMode &&
+    prevProps.gridSize === nextProps.gridSize &&
+    prevProps.progressPercent === nextProps.progressPercent
+  );
+});

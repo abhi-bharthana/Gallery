@@ -1,4 +1,5 @@
 // src/components/Navbar.tsx
+import { useState, useEffect } from 'react'; // 🔥 useState aur useEffect import kiye
 import { Search, Grid, LayoutGrid, Maximize, X, ArrowDownWideNarrow } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -12,6 +13,24 @@ interface NavbarProps {
 }
 
 export default function Navbar({ gridSize, setGridSize, searchQuery, setSearchQuery, sortBy, setSortBy }: NavbarProps) {
+  // 🔥 Local state for zero-lag typing
+  const [inputValue, setInputValue] = useState(searchQuery);
+
+  // 🔥 Debounce Engine: Typing khatam hone ke 300ms baad actual search trigger hoga
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (inputValue !== searchQuery) {
+        setSearchQuery(inputValue);
+      }
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [inputValue, setSearchQuery, searchQuery]);
+
+  // 🔥 Agar user 'X' button dabaye ya query reset ho, toh local state ko sync rakho
+  useEffect(() => {
+    setInputValue(searchQuery);
+  }, [searchQuery]);
+
   return (
     <nav className="relative z-10 w-full max-w-7xl mx-auto flex justify-between items-center mb-8 gap-4 px-2">
       {/* Search Bar */}
@@ -19,13 +38,19 @@ export default function Navbar({ gridSize, setGridSize, searchQuery, setSearchQu
         <Search size={18} className="text-gray-500 group-focus-within:text-purple-400 transition-colors" />
         <input
           type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          value={inputValue} // 🔥 Local state se bind kiya
+          onChange={(e) => setInputValue(e.target.value)} // 🔥 Instant update, no lag
           placeholder="Search by filename..."
           className="bg-transparent border-none outline-none text-sm text-gray-200 w-full placeholder:text-gray-600 font-medium tracking-wide"
         />
-        {searchQuery && (
-          <button onClick={() => setSearchQuery('')} className="text-gray-500 hover:text-white">
+        {inputValue && ( // 🔥 Check inputValue instead of searchQuery
+          <button 
+            onClick={() => {
+              setInputValue('');
+              setSearchQuery('');
+            }} 
+            className="text-gray-500 hover:text-white"
+          >
             <X size={15} />
           </button>
         )}

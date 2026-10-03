@@ -1,22 +1,22 @@
 // src/App.tsx
-import { useState, useMemo, useEffect } from 'react'; 
+import { useState, useMemo, useEffect, Suspense, lazy } from 'react'; // 🔥 Suspense aur lazy import kiya
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react'; // 🔥 Loader2 for smooth fallback
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { invoke } from '@tauri-apps/api/core'; // 🔥 API call ke liye
+import { invoke } from '@tauri-apps/api/core';
 import './App.css';
-
+import { useGalleryData, LocalImage } from './hooks/useGalleryData';
+import { useSystemHooks } from './hooks/useSystemHooks';
 import Sidebar from './components/Sidebar/Sidebar';
 import Navbar from './components/Navbar';
 import Gallery from './components/Gallery/index';
-import MediaViewer from './components/MediaViewer/index';
-import FolderManager from './components/FolderManager';
-import AlbumsView from './components/AlbumsView';
 import SplashScreen from './components/SplashScreen';
-import VaultUnlock from './components/Vault/VaultUnlock'; // 🔥 Ghost mode unlock UI
 
-import { useGalleryData, LocalImage } from './hooks/useGalleryData';
-import { useSystemHooks } from './hooks/useSystemHooks'; 
+// 🔥 HEAVY COMPONENTS KO LAZY LOAD KARWA DIYA (RAM aur Startup Time bachega)
+const MediaViewer = lazy(() => import('./components/MediaViewer/index'));
+const FolderManager = lazy(() => import('./components/FolderManager'));
+const AlbumsView = lazy(() => import('./components/AlbumsView'));
+const VaultUnlock = lazy(() => import('./components/Vault/VaultUnlock'));
 
 export default function App() {
   const [gridSize, setGridSize] = useState<'small' | 'medium' | 'large'>('medium');
@@ -139,8 +139,8 @@ export default function App() {
                   favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                   onDelete={gallery.moveToTrash} isTrashView={activeTab === 'Trash'} onRestore={gallery.restoreFromTrash} 
                   onLockToVault={handleLockToVault} 
-                  onUnlockFromVault={handleUnlockFromVault} // 🔥 Added
-                  isGhostMode={isGhostMode} // 🔥 Added
+                  onUnlockFromVault={handleUnlockFromVault} 
+                  isGhostMode={isGhostMode} 
                 />
               )}
 
@@ -158,18 +158,24 @@ export default function App() {
                         favorites={gallery.favorites} onToggleFavorite={gallery.toggleFavorite} 
                         onDelete={gallery.moveToTrash} isTrashView={false} onRestore={gallery.restoreFromTrash} 
                         onLockToVault={handleLockToVault} 
-                        onUnlockFromVault={handleUnlockFromVault} // 🔥 Added
-                        isGhostMode={isGhostMode} // 🔥 Added
+                        onUnlockFromVault={handleUnlockFromVault} 
+                        isGhostMode={isGhostMode} 
                       />
                     </div>
                   ) : (
-                    <AlbumsView albums={gallery.albums} allPhotos={gallery.allPhotos} onCreateAlbum={gallery.createAlbum} onSelectAlbum={setSelectedAlbumId} />
+                    <Suspense fallback={<div className="flex items-center justify-center p-10"><Loader2 className="animate-spin text-purple-500" size={32} /></div>}>
+                      <AlbumsView albums={gallery.albums} allPhotos={gallery.allPhotos} onCreateAlbum={gallery.createAlbum} onSelectAlbum={setSelectedAlbumId} />
+                    </Suspense>
                   )}
                 </div>
               )}
 
               {/* @ts-ignore */}
-              {activeTab === 'Settings' && <FolderManager onFoldersChanged={gallery.syncImages} />}
+              {activeTab === 'Settings' && (
+                <Suspense fallback={<div className="flex flex-1 items-center justify-center h-full"><Loader2 className="animate-spin text-purple-500" size={40} /></div>}>
+                  <FolderManager onFoldersChanged={gallery.syncImages} />
+                </Suspense>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -181,43 +187,47 @@ export default function App() {
             const hasPrev = idx > 0;
 
             return (
-              <MediaViewer
-                image={selectedImage} 
-                isFavorite={gallery.favorites.includes(selectedImage.id)} 
-                isTrashed={gallery.trash.includes(selectedImage.id)} 
-                albums={gallery.manualAlbums} 
-                onClose={handleViewerClose}
-                onToggleFavorite={() => gallery.toggleFavorite(selectedImage.id)}
-                onDelete={() => {
-                  gallery.moveToTrash(selectedImage.id);
-                  if (hasNext) setSelectedImage(displayedPhotos[idx + 1]);
-                  else if (hasPrev) setSelectedImage(displayedPhotos[idx - 1]);
-                  else setSelectedImage(null);
-                }}
-                onRestore={() => { gallery.restoreFromTrash(selectedImage.id); setSelectedImage(null); }}
-                onAddToAlbum={(albumId: string) => gallery.addToAlbum(selectedImage.id, albumId)}
-                onNext={() => hasNext && setSelectedImage(displayedPhotos[idx + 1])}
-                onPrev={() => hasPrev && setSelectedImage(displayedPhotos[idx - 1])}
-                hasNext={hasNext} hasPrev={hasPrev}
-                onLockToVault={(ids: string[]) => handleLockToVault(ids)} 
-                onUnlockFromVault={(ids: string[]) => handleUnlockFromVault(ids)} // 🔥 Added
-                isGhostMode={isGhostMode} // 🔥 Added
-              />
+              <Suspense fallback={null}>
+                <MediaViewer
+                  image={selectedImage} 
+                  isFavorite={gallery.favorites.includes(selectedImage.id)} 
+                  isTrashed={gallery.trash.includes(selectedImage.id)} 
+                  albums={gallery.manualAlbums} 
+                  onClose={handleViewerClose}
+                  onToggleFavorite={() => gallery.toggleFavorite(selectedImage.id)}
+                  onDelete={() => {
+                    gallery.moveToTrash(selectedImage.id);
+                    if (hasNext) setSelectedImage(displayedPhotos[idx + 1]);
+                    else if (hasPrev) setSelectedImage(displayedPhotos[idx - 1]);
+                    else setSelectedImage(null);
+                  }}
+                  onRestore={() => { gallery.restoreFromTrash(selectedImage.id); setSelectedImage(null); }}
+                  onAddToAlbum={(albumId: string) => gallery.addToAlbum(selectedImage.id, albumId)}
+                  onNext={() => hasNext && setSelectedImage(displayedPhotos[idx + 1])}
+                  onPrev={() => hasPrev && setSelectedImage(displayedPhotos[idx - 1])}
+                  hasNext={hasNext} hasPrev={hasPrev}
+                  onLockToVault={(ids: string[]) => handleLockToVault(ids)} 
+                  onUnlockFromVault={(ids: string[]) => handleUnlockFromVault(ids)} 
+                  isGhostMode={isGhostMode} 
+                />
+              </Suspense>
             );
           })()}
         </AnimatePresence>
       </div>
 
-      {/* 🔥 The Ghost Mode Authentication Modal */}
+      {/* 🔥 The Ghost Mode Authentication Modal with Suspense */}
       <AnimatePresence>
         {showVaultAuth && (
-          <VaultUnlock 
-            onUnlocked={() => {
-              setIsGhostMode(true);
-              setShowVaultAuth(false);
-            }} 
-            onClose={() => setShowVaultAuth(false)} 
-          />
+          <Suspense fallback={null}>
+            <VaultUnlock 
+              onUnlocked={() => {
+                setIsGhostMode(true);
+                setShowVaultAuth(false);
+              }} 
+              onClose={() => setShowVaultAuth(false)} 
+            />
+          </Suspense>
         )}
       </AnimatePresence>
     </>
